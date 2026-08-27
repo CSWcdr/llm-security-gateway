@@ -24,6 +24,7 @@ import {
     useAuth,
   } from "../hooks/useAuth";
   
+  
   export default function LoginPage() {
     const navigate =
       useNavigate();
@@ -34,26 +35,34 @@ import {
     const { login } =
       useAuth();
   
-    const [email, setEmail] =
-      useState(
-        "developer@example.com"
-      );
+  
+    const [
+      email,
+      setEmail,
+    ] =
+      useState("");
+  
   
     const [
       password,
       setPassword,
     ] =
-      useState("password");
+      useState("");
+  
   
     const [
       showPassword,
       setShowPassword,
-    ] = useState(false);
+    ] =
+      useState(false);
+  
   
     const [
       submitting,
       setSubmitting,
-    ] = useState(false);
+    ] =
+      useState(false);
+  
   
     async function handleSubmit(
       event:
@@ -99,6 +108,7 @@ import {
       }
     }
   
+  
     return (
       <div>
         <div>
@@ -111,14 +121,6 @@ import {
           </p>
         </div>
   
-        <div className="mt-6 rounded-xl border border-blue-500/10 bg-blue-500/5 p-4">
-  
-          <p className="text-xs leading-5 text-blue-200/60">
-            Frontend demo mode: use any valid email and a password
-            containing at least 6 characters.
-          </p>
-  
-        </div>
   
         <form
           onSubmit={
@@ -146,11 +148,13 @@ import {
                   )
                 }
                 placeholder="you@company.com"
+                autoComplete="email"
                 className="auth-input pl-10"
               />
   
             </div>
           </AuthField>
+  
   
           <AuthField
             label="Password"
@@ -178,6 +182,7 @@ import {
                   )
                 }
                 placeholder="Enter your password"
+                autoComplete="current-password"
                 className="auth-input px-10"
               />
   
@@ -205,24 +210,14 @@ import {
             </div>
           </AuthField>
   
-          <div className="flex items-center justify-between">
   
-            <label className="flex items-center gap-2 text-xs text-slate-500">
-  
-              <input
-                type="checkbox"
-                className="rounded border-slate-700 bg-slate-900"
-              />
-  
-              Remember me
-  
-            </label>
+          <div className="flex items-center justify-end">
   
             <button
               type="button"
               onClick={() =>
                 toast.info(
-                  "Password reset will be implemented with the backend."
+                  "Password reset is not enabled yet."
                 )
               }
               className="text-xs font-medium text-blue-400 hover:text-blue-300"
@@ -231,6 +226,7 @@ import {
             </button>
   
           </div>
+  
   
           <button
             type="submit"
@@ -257,6 +253,7 @@ import {
   
         </form>
   
+  
         <p className="mt-7 text-center text-sm text-slate-600">
   
           Don't have an account?{" "}
@@ -272,6 +269,7 @@ import {
       </div>
     );
   }
+  
   
   function AuthField({
     label,

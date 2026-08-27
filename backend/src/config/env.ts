@@ -52,8 +52,22 @@ const envSchema = z.object({
   GROQ_MODEL: z
     .string()
     .default(
-      "llama-3.1-8b-instant"
+      "openai/gpt-oss-20b"
     ),
+
+  JWT_SECRET: z
+    .string()
+    .min(
+      32,
+      "JWT_SECRET must be at least 32 characters."
+    ),
+
+  JWT_EXPIRES_IN_SECONDS:
+    z.coerce
+      .number()
+      .int()
+      .positive()
+      .default(604800),
 });
 
 const parsedEnv =

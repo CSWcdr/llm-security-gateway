@@ -1,153 +1,293 @@
 import {
     createContext,
+    useCallback,
+    useEffect,
     useState,
     type ReactNode,
   } from "react";
   
-  import {
-    mockSecurityPolicies,
-  } from "../data/mockData";
+  import axios from "axios";
   
-  import type {
-    ProjectSecurityPolicy,
-    SecurityRuleAction,
-  } from "../types";
+  import { api } from "../lib/api";
+  import { useAuth } from "../hooks/useAuth";
+  import { useProjects } from "../hooks/useProjects";
+  
+  
+  export type SecurityAction =
+    | "BLOCK"
+    | "WARN"
+    | "MASK"
+    | "ALLOW";
+  
+  
+  export type SecurityPolicy = {
+    id: string;
+    projectId: string;
+  
+    promptInjectionEnabled: boolean;
+    promptInjectionAction: SecurityAction;
+  
+    piiDetectionEnabled: boolean;
+    piiDetectionAction: SecurityAction;
+  
+    secretDetectionEnabled: boolean;
+    secretDetectionAction: SecurityAction;
+  
+    outputScanningEnabled: boolean;
+    outputScanningAction: SecurityAction;
+  
+    createdAt: string;
+    updatedAt: string;
+  };
+  
+  
+  type UpdateSecurityPolicyInput =
+    Partial<
+      Pick<
+        SecurityPolicy,
+        | "promptInjectionEnabled"
+        | "promptInjectionAction"
+        | "piiDetectionEnabled"
+        | "piiDetectionAction"
+        | "secretDetectionEnabled"
+        | "secretDetectionAction"
+        | "outputScanningEnabled"
+        | "outputScanningAction"
+      >
+    >;
+  
+  
+  type SecurityPolicyResponse = {
+    success: boolean;
+    message: string;
+    data: SecurityPolicy;
+  };
+  
+  
+  type ErrorResponse = {
+    success?: boolean;
+    message?: string;
+  };
+  
   
   type SecurityPoliciesContextType = {
-    policies: ProjectSecurityPolicy[];
+    policies: Record<
+      string,
+      SecurityPolicy
+    >;
   
-    getPolicyByProjectId: (
+    loading: boolean;
+  
+    getSecurityPolicy: (
       projectId: string
-    ) => ProjectSecurityPolicy | undefined;
+    ) => SecurityPolicy | undefined;
   
-    toggleRule: (
+    updateSecurityPolicy: (
       projectId: string,
-      ruleId: string
-    ) => void;
+      input: UpdateSecurityPolicyInput
+    ) => Promise<SecurityPolicy>;
   
-    updateRuleAction: (
-      projectId: string,
-      ruleId: string,
-      action: SecurityRuleAction
-    ) => void;
+    refreshSecurityPolicies:
+      () => Promise<void>;
   };
+  
   
   export const SecurityPoliciesContext =
     createContext<
       SecurityPoliciesContextType | undefined
     >(undefined);
   
+  
   type SecurityPoliciesProviderProps = {
     children: ReactNode;
   };
   
+  
   export function SecurityPoliciesProvider({
     children,
   }: SecurityPoliciesProviderProps) {
-    const [policies, setPolicies] =
-      useState<ProjectSecurityPolicy[]>(
-        mockSecurityPolicies
+    const {
+      isAuthenticated,
+      loading: authLoading,
+    } = useAuth();
+  
+    const {
+      projects,
+    } = useProjects();
+  
+  
+    const [
+      policies,
+      setPolicies,
+    ] = useState<
+      Record<string, SecurityPolicy>
+    >({});
+  
+  
+    const [
+      loading,
+      setLoading,
+    ] = useState(false);
+  
+  
+    const refreshSecurityPolicies =
+      useCallback(
+        async () => {
+          if (
+            !isAuthenticated ||
+            projects.length === 0
+          ) {
+            setPolicies({});
+            return;
+          }
+  
+          try {
+            setLoading(true);
+  
+            const responses =
+              await Promise.all(
+                projects.map(
+                  (project) =>
+                    api.get<SecurityPolicyResponse>(
+                      `/projects/${project.id}/security-policy`
+                    )
+                )
+              );
+  
+            const nextPolicies:
+              Record<
+                string,
+                SecurityPolicy
+              > = {};
+  
+            responses.forEach(
+              (response) => {
+                const policy =
+                  response.data.data;
+  
+                nextPolicies[
+                  policy.projectId
+                ] = policy;
+              }
+            );
+  
+            setPolicies(
+              nextPolicies
+            );
+          } catch (error) {
+            console.error(
+              getApiErrorMessage(
+                error,
+                "Failed to fetch security policies."
+              )
+            );
+          } finally {
+            setLoading(false);
+          }
+        },
+        [
+          isAuthenticated,
+          projects,
+        ]
       );
   
-    function getPolicyByProjectId(
+  
+    useEffect(() => {
+      if (authLoading) {
+        return;
+      }
+  
+      refreshSecurityPolicies();
+    }, [
+      authLoading,
+      refreshSecurityPolicies,
+    ]);
+  
+  
+    function getSecurityPolicy(
       projectId: string
     ) {
-      return policies.find(
-        (policy) =>
-          policy.projectId === projectId
-      );
+      return policies[
+        projectId
+      ];
     }
   
-    function toggleRule(
+  
+    async function updateSecurityPolicy(
       projectId: string,
-      ruleId: string
+      input:
+        UpdateSecurityPolicyInput
     ) {
-      setPolicies((currentPolicies) =>
-        currentPolicies.map((policy) => {
-          if (
-            policy.projectId !== projectId
-          ) {
-            return policy;
-          }
+      try {
+        const response =
+          await api.patch<SecurityPolicyResponse>(
+            `/projects/${projectId}/security-policy`,
+            input
+          );
   
-          return {
-            ...policy,
+        const updatedPolicy =
+          response.data.data;
   
-            updatedAt:
-              new Date().toLocaleDateString(
-                "en-US",
-                {
-                  month: "short",
-                  day: "2-digit",
-                  year: "numeric",
-                }
-              ),
+        setPolicies(
+          (
+            currentPolicies
+          ) => ({
+            ...currentPolicies,
   
-            rules: policy.rules.map(
-              (rule) =>
-                rule.id === ruleId
-                  ? {
-                      ...rule,
-                      enabled:
-                        !rule.enabled,
-                    }
-                  : rule
-            ),
-          };
-        })
-      );
+            [projectId]:
+              updatedPolicy,
+          })
+        );
+  
+        return updatedPolicy;
+      } catch (error) {
+        throw new Error(
+          getApiErrorMessage(
+            error,
+            "Failed to update security policy."
+          )
+        );
+      }
     }
   
-    function updateRuleAction(
-      projectId: string,
-      ruleId: string,
-      action: SecurityRuleAction
-    ) {
-      setPolicies((currentPolicies) =>
-        currentPolicies.map((policy) => {
-          if (
-            policy.projectId !== projectId
-          ) {
-            return policy;
-          }
-  
-          return {
-            ...policy,
-  
-            updatedAt:
-              new Date().toLocaleDateString(
-                "en-US",
-                {
-                  month: "short",
-                  day: "2-digit",
-                  year: "numeric",
-                }
-              ),
-  
-            rules: policy.rules.map(
-              (rule) =>
-                rule.id === ruleId
-                  ? {
-                      ...rule,
-                      action,
-                    }
-                  : rule
-            ),
-          };
-        })
-      );
-    }
   
     return (
       <SecurityPoliciesContext.Provider
         value={{
           policies,
-          getPolicyByProjectId,
-          toggleRule,
-          updateRuleAction,
+          loading,
+          getSecurityPolicy,
+          updateSecurityPolicy,
+          refreshSecurityPolicies,
         }}
       >
         {children}
       </SecurityPoliciesContext.Provider>
     );
+  }
+  
+  
+  function getApiErrorMessage(
+    error: unknown,
+    fallback: string
+  ) {
+    if (
+      axios.isAxiosError<
+        ErrorResponse
+      >(error)
+    ) {
+      return (
+        error.response?.data
+          ?.message ??
+        fallback
+      );
+    }
+  
+    if (
+      error instanceof Error
+    ) {
+      return error.message;
+    }
+  
+    return fallback;
   }

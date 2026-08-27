@@ -4,11 +4,14 @@ import {
   } from "react";
   
   import {
+    Loader2,
     Plus,
     Search,
   } from "lucide-react";
   
-  import { toast } from "sonner";
+  import {
+    toast,
+  } from "sonner";
   
   import CreateProjectModal from "../components/projects/CreateProjectModal";
   import ProjectCard from "../components/projects/ProjectCard";
@@ -17,63 +20,121 @@ import {
     ProjectStatus,
   } from "../types";
   
-  import { useProjects } from "../hooks/useProjects";
+  import {
+    useProjects,
+  } from "../hooks/useProjects";
+  
   
   type FilterStatus =
     | "All"
     | ProjectStatus;
   
+  
   export default function ProjectsPage() {
     const {
       projects,
       createProject,
-    } = useProjects();
+      loading,
+    } =
+      useProjects();
   
-    const [search, setSearch] =
+  
+    const [
+      search,
+      setSearch,
+    ] =
       useState("");
   
-    const [statusFilter, setStatusFilter] =
-      useState<FilterStatus>("All");
   
-    const [modalOpen, setModalOpen] =
+    const [
+      statusFilter,
+      setStatusFilter,
+    ] =
+      useState<FilterStatus>(
+        "All"
+      );
+  
+  
+    const [
+      modalOpen,
+      setModalOpen,
+    ] =
       useState(false);
   
-    const filteredProjects = useMemo(() => {
-      return projects.filter((project) => {
-        const matchesSearch =
-          project.name
-            .toLowerCase()
-            .includes(search.toLowerCase()) ||
-          project.description
-            .toLowerCase()
-            .includes(search.toLowerCase());
   
-        const matchesStatus =
-          statusFilter === "All" ||
-          project.status === statusFilter;
+    const filteredProjects =
+      useMemo(() => {
+        return projects.filter(
+          (project) => {
+            const matchesSearch =
+              project.name
+                .toLowerCase()
+                .includes(
+                  search.toLowerCase()
+                ) ||
+              project.description
+                .toLowerCase()
+                .includes(
+                  search.toLowerCase()
+                );
   
-        return matchesSearch && matchesStatus;
-      });
-    }, [
-      projects,
-      search,
-      statusFilter,
-    ]);
+            const matchesStatus =
+              statusFilter ===
+                "All" ||
+              project.status ===
+                statusFilter;
   
-    function handleCreateProject(project: {
-      name: string;
-      description: string;
-      environment:
-        | "Production"
-        | "Development";
-    }) {
-      const newProject =
-        createProject(project);
+            return (
+              matchesSearch &&
+              matchesStatus
+            );
+          }
+        );
+      }, [
+        projects,
+        search,
+        statusFilter,
+      ]);
   
-      toast.success("Project created", {
-        description: `${newProject.name} is ready for configuration.`,
-      });
+  
+    async function handleCreateProject(
+      project: {
+        name: string;
+        description: string;
+  
+        environment:
+          | "Production"
+          | "Development";
+      }
+    ) {
+      try {
+        const newProject =
+          await createProject(
+            project
+          );
+  
+        toast.success(
+          "Project created",
+          {
+            description:
+              `${newProject.name} is ready for configuration.`,
+          }
+        );
+  
+        setModalOpen(
+          false
+        );
+      } catch (error) {
+        toast.error(
+          error instanceof Error
+            ? error.message
+            : "Failed to create project."
+        );
+  
+        throw error;
+      }
     }
+  
   
     return (
       <div className="space-y-6">
@@ -91,22 +152,28 @@ import {
             </p>
           </div>
   
+  
           <button
             onClick={() =>
-              setModalOpen(true)
+              setModalOpen(
+                true
+              )
             }
             className="flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-blue-500"
           >
             <Plus size={17} />
+  
             New Project
           </button>
   
         </div>
   
+  
         {/* Stats */}
         <div className="grid gap-4 sm:grid-cols-3">
   
           <div className="rounded-xl border border-slate-800 bg-slate-900/40 p-4">
+  
             <p className="text-xs text-slate-500">
               Total Projects
             </p>
@@ -114,9 +181,12 @@ import {
             <p className="mt-2 text-xl font-semibold text-white">
               {projects.length}
             </p>
+  
           </div>
   
+  
           <div className="rounded-xl border border-slate-800 bg-slate-900/40 p-4">
+  
             <p className="text-xs text-slate-500">
               Active
             </p>
@@ -130,9 +200,12 @@ import {
                 ).length
               }
             </p>
+  
           </div>
   
+  
           <div className="rounded-xl border border-slate-800 bg-slate-900/40 p-4">
+  
             <p className="text-xs text-slate-500">
               Total Requests
             </p>
@@ -140,16 +213,21 @@ import {
             <p className="mt-2 text-xl font-semibold text-white">
               {projects
                 .reduce(
-                  (total, project) =>
+                  (
+                    total,
+                    project
+                  ) =>
                     total +
                     project.requests,
                   0
                 )
                 .toLocaleString()}
             </p>
+  
           </div>
   
         </div>
+  
   
         {/* Search + Filters */}
         <div className="flex flex-col gap-3 rounded-2xl border border-slate-800 bg-slate-900/30 p-4 sm:flex-row sm:items-center">
@@ -174,6 +252,7 @@ import {
   
           </div>
   
+  
           <div className="flex gap-2">
   
             {(
@@ -182,39 +261,68 @@ import {
                 "Active",
                 "Paused",
               ] as FilterStatus[]
-            ).map((status) => (
+            ).map(
+              (status) => (
   
-              <button
-                key={status}
-                onClick={() =>
-                  setStatusFilter(status)
-                }
-                className={`rounded-lg px-3 py-2 text-xs font-medium transition ${
-                  statusFilter === status
-                    ? "bg-blue-500/10 text-blue-400"
-                    : "text-slate-500 hover:bg-slate-800 hover:text-slate-300"
-                }`}
-              >
-                {status}
-              </button>
+                <button
+                  key={status}
+                  onClick={() =>
+                    setStatusFilter(
+                      status
+                    )
+                  }
+                  className={`rounded-lg px-3 py-2 text-xs font-medium transition ${
+                    statusFilter ===
+                    status
+                      ? "bg-blue-500/10 text-blue-400"
+                      : "text-slate-500 hover:bg-slate-800 hover:text-slate-300"
+                  }`}
+                >
+                  {status}
+                </button>
   
-            ))}
+              )
+            )}
   
           </div>
   
         </div>
   
-        {/* Project Grid */}
-        {filteredProjects.length > 0 ? (
   
+        {/* Loading */}
+        {loading ? (
+  
+          <div className="flex items-center justify-center py-20">
+  
+            <Loader2
+              size={24}
+              className="animate-spin text-blue-400"
+            />
+  
+            <span className="ml-3 text-sm text-slate-500">
+              Loading projects...
+            </span>
+  
+          </div>
+  
+        ) : filteredProjects.length >
+          0 ? (
+  
+          /* Project Grid */
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
   
             {filteredProjects.map(
               (project) => (
+  
                 <ProjectCard
-                  key={project.id}
-                  project={project}
+                  key={
+                    project.id
+                  }
+                  project={
+                    project
+                  }
                 />
+  
               )
             )}
   
@@ -229,19 +337,23 @@ import {
             </h3>
   
             <p className="mt-2 text-xs text-slate-600">
-              Try changing your search or filter.
+              Create your first project or change your search/filter.
             </p>
   
           </div>
   
         )}
   
-        {/* Create Project Modal */}
+  
         <CreateProjectModal
           open={modalOpen}
+  
           onClose={() =>
-            setModalOpen(false)
+            setModalOpen(
+              false
+            )
           }
+  
           onCreate={
             handleCreateProject
           }

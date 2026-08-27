@@ -1,19 +1,16 @@
 import {
+    useEffect,
     useState,
   } from "react";
   
   import {
-    Info,
-    Save,
+    Loader2,
     ShieldCheck,
   } from "lucide-react";
   
   import {
     toast,
   } from "sonner";
-  
-  import PolicySummary from "../components/security/PolicySummary";
-  import SecurityRuleCard from "../components/security/SecurityRuleCard";
   
   import {
     useProjects,
@@ -23,150 +20,151 @@ import {
     useSecurityPolicies,
   } from "../hooks/useSecurityPolicies";
   
+  import type {
+    SecurityAction,
+  } from "../context/SecurityPoliciesContext";
+  
+  
+  const ACTIONS:
+    SecurityAction[] = [
+      "BLOCK",
+      "WARN",
+      "MASK",
+      "ALLOW",
+    ];
+  
+  
   export default function SecurityRulesPage() {
     const {
       projects,
-    } =
-      useProjects();
+    } = useProjects();
   
     const {
-      getPolicyByProjectId,
-      toggleRule,
-      updateRuleAction,
+      getSecurityPolicy,
+      updateSecurityPolicy,
+      loading,
     } =
       useSecurityPolicies();
+  
   
     const [
       selectedProjectId,
       setSelectedProjectId,
-    ] =
-      useState(
-        projects[0]?.id ??
-          ""
-      );
+    ] = useState("");
   
-    /*
-     * If the selected project still
-     * exists, use it.
-     *
-     * Otherwise fall back to the first
-     * available project.
-     *
-     * This avoids using useEffect +
-     * setState just to synchronize state.
-     */
-    const effectiveProjectId =
-      projects.some(
-        (project) =>
-          project.id ===
-          selectedProjectId
-      )
-        ? selectedProjectId
-        : projects[0]?.id ??
-          "";
+  
+    const [
+      savingRule,
+      setSavingRule,
+    ] = useState<
+      string | null
+    >(null);
+  
+  
+    useEffect(() => {
+      if (
+        !selectedProjectId &&
+        projects.length > 0
+      ) {
+        setSelectedProjectId(
+          projects[0].id
+        );
+      }
+  
+      if (
+        selectedProjectId &&
+        !projects.some(
+          (project) =>
+            project.id ===
+            selectedProjectId
+        )
+      ) {
+        setSelectedProjectId(
+          projects[0]?.id ?? ""
+        );
+      }
+    }, [
+      projects,
+      selectedProjectId,
+    ]);
+  
   
     const policy =
-      getPolicyByProjectId(
-        effectiveProjectId
-      );
+      selectedProjectId
+        ? getSecurityPolicy(
+            selectedProjectId
+          )
+        : undefined;
   
-    function handleSave() {
-      toast.success(
-        "Security policy saved",
-        {
-          description:
-            "Changes will apply to future gateway requests.",
-        }
-      );
+  
+    async function saveChange(
+      ruleName: string,
+      update: Record<
+        string,
+        boolean | SecurityAction
+      >
+    ) {
+      if (!selectedProjectId) {
+        return;
+      }
+  
+      try {
+        setSavingRule(
+          ruleName
+        );
+  
+        await updateSecurityPolicy(
+          selectedProjectId,
+          update
+        );
+  
+        toast.success(
+          "Security policy updated"
+        );
+      } catch (error) {
+        toast.error(
+          error instanceof Error
+            ? error.message
+            : "Failed to update security policy."
+        );
+      } finally {
+        setSavingRule(null);
+      }
     }
+  
   
     return (
       <div className="space-y-6">
-        {/* Header */}
-        <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
+  
+        <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
+  
           <div>
-            <div className="flex items-center gap-2">
-              <ShieldCheck
-                size={20}
-                className="text-blue-400"
-              />
+            <h1 className="text-2xl font-semibold tracking-tight text-white">
+              Security Rules
+            </h1>
   
-              <h1 className="text-2xl font-semibold tracking-tight text-white">
-                Security Rules
-              </h1>
-            </div>
-  
-            <p className="mt-2 text-sm text-slate-500">
-              Configure how the gateway handles
-              security threats and sensitive data.
+            <p className="mt-1 text-sm text-slate-500">
+              Configure how the gateway handles risky prompts and model output.
             </p>
           </div>
   
-          <button
-            type="button"
-            onClick={
-              handleSave
-            }
-            disabled={!policy}
-            className="flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            <Save
-              size={16}
-            />
   
-            Save Policy
-          </button>
-        </div>
+          <div className="min-w-60">
   
-        {/* Information */}
-        <div className="flex gap-3 rounded-2xl border border-blue-500/15 bg-blue-500/5 p-4">
-          <Info
-            size={18}
-            className="mt-0.5 shrink-0 text-blue-400"
-          />
-  
-          <div>
-            <p className="text-sm font-medium text-blue-300">
-              Project-specific security policies
-            </p>
-  
-            <p className="mt-1 text-xs leading-5 text-blue-200/50">
-              Each project can define its own
-              security behavior. A rule can block,
-              warn, mask or allow detected content
-              depending on the application's
-              requirements.
-            </p>
-          </div>
-        </div>
-  
-        {/* Project selector */}
-        <div className="rounded-2xl border border-slate-800 bg-slate-900/30 p-5">
-          <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
-            <div>
-              <p className="text-sm font-medium text-slate-200">
-                Project Policy
-              </p>
-  
-              <p className="mt-1 text-xs text-slate-600">
-                Select the application whose
-                security configuration you want
-                to manage.
-              </p>
-            </div>
+            <label className="text-xs font-medium text-slate-500">
+              Project
+            </label>
   
             <select
               value={
-                effectiveProjectId
+                selectedProjectId
               }
-              onChange={(
-                event
-              ) =>
+              onChange={(event) =>
                 setSelectedProjectId(
                   event.target.value
                 )
               }
-              className="min-w-56 rounded-xl border border-slate-800 bg-slate-950 px-4 py-2.5 text-sm text-slate-300 outline-none focus:border-blue-500/50"
+              className="mt-2 w-full rounded-xl border border-slate-800 bg-slate-950 px-3 py-2.5 text-sm text-white outline-none focus:border-blue-500/50"
             >
               {projects.map(
                 (project) => (
@@ -178,148 +176,349 @@ import {
                       project.id
                     }
                   >
-                    {
-                      project.name
-                    }
+                    {project.name}
                   </option>
                 )
               )}
             </select>
+  
           </div>
+  
         </div>
   
-        {!policy ? (
-          /* Empty policy */
-          <div className="rounded-2xl border border-dashed border-slate-800 py-20 text-center">
-            <ShieldCheck
-              size={28}
-              className="mx-auto text-slate-700"
-            />
   
-            <p className="mt-4 text-sm text-slate-400">
-              No security policy configured.
+        <div className="flex gap-3 rounded-2xl border border-blue-500/15 bg-blue-500/5 p-4">
+  
+          <ShieldCheck
+            size={20}
+            className="mt-0.5 shrink-0 text-blue-400"
+          />
+  
+          <div>
+            <p className="text-sm font-medium text-blue-300">
+              Project-specific protection
             </p>
   
-            <p className="mt-2 text-xs text-slate-600">
-              This project will receive a default
-              policy when backend persistence is
-              implemented.
+            <p className="mt-1 text-xs leading-5 text-blue-200/50">
+              Each project can independently block, warn, mask, or allow detected security findings.
             </p>
           </div>
+  
+        </div>
+  
+  
+        {loading && !policy ? (
+  
+          <div className="flex items-center justify-center py-20">
+  
+            <Loader2
+              size={24}
+              className="animate-spin text-blue-400"
+            />
+  
+            <span className="ml-3 text-sm text-slate-500">
+              Loading security policy...
+            </span>
+  
+          </div>
+  
+        ) : !selectedProjectId ? (
+  
+          <EmptyState />
+  
+        ) : !policy ? (
+  
+          <EmptyState />
+  
         ) : (
-          <>
-            {/* Summary */}
-            <PolicySummary
-              policy={
-                policy
+  
+          <div className="grid gap-4">
+  
+            <RuleCard
+              title="Prompt Injection Protection"
+              description="Detect attempts to override or manipulate system instructions."
+              enabled={
+                policy.promptInjectionEnabled
+              }
+              action={
+                policy.promptInjectionAction
+              }
+              saving={
+                savingRule ===
+                "prompt-injection"
+              }
+              onEnabledChange={(
+                enabled
+              ) =>
+                saveChange(
+                  "prompt-injection",
+                  {
+                    promptInjectionEnabled:
+                      enabled,
+                  }
+                )
+              }
+              onActionChange={(
+                action
+              ) =>
+                saveChange(
+                  "prompt-injection",
+                  {
+                    promptInjectionAction:
+                      action,
+                  }
+                )
               }
             />
   
-            {/* Protection rules title */}
-            <div className="flex items-center justify-between">
-              <div>
-                <h2 className="text-base font-semibold text-white">
-                  Protection Rules
-                </h2>
   
-                <p className="mt-1 text-xs text-slate-600">
-                  Last updated{" "}
+            <RuleCard
+              title="PII Detection"
+              description="Detect personal information such as email addresses and phone numbers."
+              enabled={
+                policy.piiDetectionEnabled
+              }
+              action={
+                policy.piiDetectionAction
+              }
+              saving={
+                savingRule ===
+                "pii"
+              }
+              onEnabledChange={(
+                enabled
+              ) =>
+                saveChange(
+                  "pii",
                   {
-                    policy.updatedAt
+                    piiDetectionEnabled:
+                      enabled,
                   }
-                </p>
-              </div>
-            </div>
-  
-            {/* Rules */}
-            <div className="grid gap-4 xl:grid-cols-2">
-              {policy.rules.map(
-                (rule) => (
-                  <SecurityRuleCard
-                    key={
-                      rule.id
-                    }
-                    rule={
-                      rule
-                    }
-                    onToggle={() =>
-                      toggleRule(
-                        policy.projectId,
-                        rule.id
-                      )
-                    }
-                    onActionChange={(
-                      action
-                    ) =>
-                      updateRuleAction(
-                        policy.projectId,
-                        rule.id,
-                        action
-                      )
-                    }
-                  />
                 )
-              )}
-            </div>
+              }
+              onActionChange={(
+                action
+              ) =>
+                saveChange(
+                  "pii",
+                  {
+                    piiDetectionAction:
+                      action,
+                  }
+                )
+              }
+            />
   
-            {/* Action descriptions */}
-            <div className="rounded-2xl border border-slate-800 bg-slate-900/30 p-5">
-              <h2 className="text-sm font-semibold text-white">
-                Policy Actions
-              </h2>
   
-              <div className="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-                <ActionInfo
-                  action="Block"
-                  description="Stop the request before it reaches the LLM."
-                  style="text-red-400"
-                />
+            <RuleCard
+              title="Secret Detection"
+              description="Detect API keys, passwords, tokens, and other sensitive credentials."
+              enabled={
+                policy.secretDetectionEnabled
+              }
+              action={
+                policy.secretDetectionAction
+              }
+              saving={
+                savingRule ===
+                "secret"
+              }
+              onEnabledChange={(
+                enabled
+              ) =>
+                saveChange(
+                  "secret",
+                  {
+                    secretDetectionEnabled:
+                      enabled,
+                  }
+                )
+              }
+              onActionChange={(
+                action
+              ) =>
+                saveChange(
+                  "secret",
+                  {
+                    secretDetectionAction:
+                      action,
+                  }
+                )
+              }
+            />
   
-                <ActionInfo
-                  action="Warn"
-                  description="Allow the request but record a security warning."
-                  style="text-amber-400"
-                />
   
-                <ActionInfo
-                  action="Mask"
-                  description="Redact sensitive values before forwarding."
-                  style="text-violet-400"
-                />
+            <RuleCard
+              title="Output Scanning"
+              description="Inspect model responses before they are returned to the client."
+              enabled={
+                policy.outputScanningEnabled
+              }
+              action={
+                policy.outputScanningAction
+              }
+              saving={
+                savingRule ===
+                "output"
+              }
+              onEnabledChange={(
+                enabled
+              ) =>
+                saveChange(
+                  "output",
+                  {
+                    outputScanningEnabled:
+                      enabled,
+                  }
+                )
+              }
+              onActionChange={(
+                action
+              ) =>
+                saveChange(
+                  "output",
+                  {
+                    outputScanningAction:
+                      action,
+                  }
+                )
+              }
+            />
   
-                <ActionInfo
-                  action="Allow"
-                  description="Record detection but continue without modification."
-                  style="text-emerald-400"
-                />
-              </div>
-            </div>
-          </>
+          </div>
+  
         )}
+  
       </div>
     );
   }
   
-  function ActionInfo({
-    action,
+  
+  function RuleCard({
+    title,
     description,
-    style,
+    enabled,
+    action,
+    saving,
+    onEnabledChange,
+    onActionChange,
   }: {
-    action: string;
+    title: string;
     description: string;
-    style: string;
+  
+    enabled: boolean;
+    action: SecurityAction;
+    saving: boolean;
+  
+    onEnabledChange: (
+      enabled: boolean
+    ) => void;
+  
+    onActionChange: (
+      action: SecurityAction
+    ) => void;
   }) {
     return (
-      <div className="rounded-xl border border-slate-800 bg-slate-950/40 p-4">
-        <p
-          className={`text-sm font-medium ${style}`}
-        >
-          {action}
+      <div className="rounded-2xl border border-slate-800 bg-slate-900/40 p-5">
+  
+        <div className="flex flex-col justify-between gap-5 lg:flex-row lg:items-center">
+  
+          <div className="max-w-xl">
+  
+            <div className="flex items-center gap-3">
+  
+              <h2 className="text-sm font-semibold text-white">
+                {title}
+              </h2>
+  
+              {saving && (
+                <Loader2
+                  size={14}
+                  className="animate-spin text-blue-400"
+                />
+              )}
+  
+            </div>
+  
+            <p className="mt-2 text-xs leading-5 text-slate-500">
+              {description}
+            </p>
+  
+          </div>
+  
+  
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+  
+            <button
+              type="button"
+              onClick={() =>
+                onEnabledChange(
+                  !enabled
+                )
+              }
+              className={`rounded-lg px-3 py-2 text-xs font-medium transition ${
+                enabled
+                  ? "bg-emerald-500/10 text-emerald-400"
+                  : "bg-slate-800 text-slate-500"
+              }`}
+            >
+              {enabled
+                ? "Enabled"
+                : "Disabled"}
+            </button>
+  
+  
+            <select
+              value={action}
+              disabled={
+                !enabled ||
+                saving
+              }
+              onChange={(event) =>
+                onActionChange(
+                  event.target
+                    .value as SecurityAction
+                )
+              }
+              className="rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-xs text-white outline-none disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {ACTIONS.map(
+                (securityAction) => (
+                  <option
+                    key={
+                      securityAction
+                    }
+                    value={
+                      securityAction
+                    }
+                  >
+                    {securityAction}
+                  </option>
+                )
+              )}
+            </select>
+  
+          </div>
+  
+        </div>
+  
+      </div>
+    );
+  }
+  
+  
+  function EmptyState() {
+    return (
+      <div className="rounded-2xl border border-dashed border-slate-800 py-20 text-center">
+  
+        <p className="text-sm text-slate-400">
+          No project selected.
         </p>
   
-        <p className="mt-2 text-xs leading-5 text-slate-600">
-          {description}
+        <p className="mt-2 text-xs text-slate-600">
+          Create a project first to configure security rules.
         </p>
+  
       </div>
     );
   }

@@ -17,6 +17,7 @@ import {
 import rateLimitRoutes from "./routes/rateLimit.routes";
 import requestLogRoutes from "./routes/requestLog.routes";
 import analyticsRoutes from "./routes/analytics.routes";
+import authRoutes from "./routes/auth.routes";
 
 const app = express();
 
@@ -50,6 +51,11 @@ app.use(
   "/api/health/database",
   databaseRoutes
 );
+
+app.use(
+    "/api/auth",
+    authRoutes
+  );
 
 /*
  * Projects

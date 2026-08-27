@@ -1,23 +1,34 @@
 import {
     createContext,
+    useEffect,
     useState,
     type ReactNode,
   } from "react";
   
+  import axios from "axios";
+  
   import type {
     AuthUser,
   } from "../types";
+  
+  import {
+    api,
+    TOKEN_STORAGE_KEY,
+  } from "../lib/api";
+  
   
   type LoginInput = {
     email: string;
     password: string;
   };
   
+  
   type RegisterInput = {
     name: string;
     email: string;
     password: string;
   };
+  
   
   type AuthContextType = {
     user: AuthUser | null;
@@ -37,224 +48,260 @@ import {
     logout: () => void;
   };
   
+  
+  type BackendUser = {
+    id: string;
+    name: string;
+    email: string;
+  
+    role:
+      | "ADMIN"
+      | "DEVELOPER";
+  
+    createdAt: string;
+    updatedAt: string;
+  };
+  
+  
+  type AuthResponse = {
+    success: boolean;
+  
+    message: string;
+  
+    data: {
+      user: BackendUser;
+      token: string;
+    };
+  };
+  
+  
+  type CurrentUserResponse = {
+    success: boolean;
+  
+    message: string;
+  
+    data: {
+      user: BackendUser;
+    };
+  };
+  
+  
+  type ErrorResponse = {
+    success?: boolean;
+    message?: string;
+  };
+  
+  
   export const AuthContext =
     createContext<
       AuthContextType | undefined
     >(undefined);
   
-  const STORAGE_KEY =
-    "llm_gateway_user";
   
   type AuthProviderProps = {
     children: ReactNode;
   };
   
+  
   export function AuthProvider({
     children,
   }: AuthProviderProps) {
-    /*
-     * Lazy initialization:
-     *
-     * Instead of:
-     *
-     * render
-     * ↓
-     * useEffect
-     * ↓
-     * localStorage
-     * ↓
-     * setUser
-     * ↓
-     * second render
-     *
-     * we read localStorage while React
-     * creates the initial state.
-     */
     const [
       user,
       setUser,
     ] =
       useState<AuthUser | null>(
-        () => {
-          const storedUser =
-            localStorage.getItem(
-              STORAGE_KEY
-            );
-  
-          if (!storedUser) {
-            return null;
-          }
-  
-          try {
-            return JSON.parse(
-              storedUser
-            ) as AuthUser;
-          } catch {
-            localStorage.removeItem(
-              STORAGE_KEY
-            );
-  
-            return null;
-          }
-        }
+        null
       );
   
+    const [
+      loading,
+      setLoading,
+    ] =
+      useState(true);
+  
+  
     /*
-     * Authentication loading will become
-     * useful once the backend validates
-     * sessions asynchronously.
+     * When the frontend reloads:
      *
-     * For our frontend simulation the
-     * localStorage check is synchronous.
+     * localStorage JWT
+     *       ↓
+     * GET /api/auth/me
+     *       ↓
+     * backend verifies token
+     *       ↓
+     * restore logged-in user
      */
-    const loading = false;
+    useEffect(() => {
+      let cancelled =
+        false;
+  
+      async function restoreSession() {
+        const token =
+          localStorage.getItem(
+            TOKEN_STORAGE_KEY
+          );
+  
+        /*
+         * Remove old mock-auth data
+         * from the previous frontend.
+         */
+        localStorage.removeItem(
+          "llm_gateway_user"
+        );
+  
+        if (!token) {
+          if (!cancelled) {
+            setLoading(false);
+          }
+  
+          return;
+        }
+  
+        try {
+          const response =
+            await api.get<CurrentUserResponse>(
+              "/auth/me"
+            );
+  
+          if (!cancelled) {
+            setUser(
+              mapBackendUser(
+                response.data.data.user
+              )
+            );
+          }
+        } catch {
+          localStorage.removeItem(
+            TOKEN_STORAGE_KEY
+          );
+  
+          if (!cancelled) {
+            setUser(null);
+          }
+        } finally {
+          if (!cancelled) {
+            setLoading(false);
+          }
+        }
+      }
+  
+      restoreSession();
+  
+      return () => {
+        cancelled = true;
+      };
+    }, []);
+  
   
     async function login({
       email,
       password,
     }: LoginInput) {
-      /*
-       * Simulates network delay.
-       *
-       * Later:
-       * POST /api/auth/login
-       */
-      await new Promise(
-        (resolve) =>
-          setTimeout(
-            resolve,
-            700
+      try {
+        const response =
+          await api.post<AuthResponse>(
+            "/auth/login",
+            {
+              email:
+                email
+                  .trim()
+                  .toLowerCase(),
+  
+              password,
+            }
+          );
+  
+        const {
+          user:
+            backendUser,
+          token,
+        } =
+          response.data.data;
+  
+        localStorage.setItem(
+          TOKEN_STORAGE_KEY,
+          token
+        );
+  
+        setUser(
+          mapBackendUser(
+            backendUser
           )
-      );
-  
-      if (!email.trim()) {
+        );
+      } catch (error) {
         throw new Error(
-          "Email is required."
+          getApiErrorMessage(
+            error,
+            "Login failed."
+          )
         );
       }
-  
-      if (
-        password.length < 6
-      ) {
-        throw new Error(
-          "Password must contain at least 6 characters."
-        );
-      }
-  
-      /*
-       * FRONTEND AUTH SIMULATION
-       *
-       * No real password validation is
-       * happening yet.
-       */
-      const authenticatedUser: AuthUser =
-        {
-          id:
-            crypto.randomUUID(),
-  
-          name:
-            getNameFromEmail(
-              email
-            ),
-  
-          email:
-            email
-              .trim()
-              .toLowerCase(),
-  
-          role:
-            "Administrator",
-        };
-  
-      setUser(
-        authenticatedUser
-      );
-  
-      localStorage.setItem(
-        STORAGE_KEY,
-  
-        JSON.stringify(
-          authenticatedUser
-        )
-      );
     }
+  
   
     async function register({
       name,
       email,
       password,
     }: RegisterInput) {
-      /*
-       * Simulated API delay.
-       *
-       * Later:
-       * POST /api/auth/register
-       */
-      await new Promise(
-        (resolve) =>
-          setTimeout(
-            resolve,
-            800
+      try {
+        const response =
+          await api.post<AuthResponse>(
+            "/auth/register",
+            {
+              name:
+                name.trim(),
+  
+              email:
+                email
+                  .trim()
+                  .toLowerCase(),
+  
+              password,
+            }
+          );
+  
+        const {
+          user:
+            backendUser,
+          token,
+        } =
+          response.data.data;
+  
+        localStorage.setItem(
+          TOKEN_STORAGE_KEY,
+          token
+        );
+  
+        setUser(
+          mapBackendUser(
+            backendUser
           )
-      );
-  
-      if (!name.trim()) {
+        );
+      } catch (error) {
         throw new Error(
-          "Name is required."
+          getApiErrorMessage(
+            error,
+            "Registration failed."
+          )
         );
       }
-  
-      if (!email.trim()) {
-        throw new Error(
-          "Email is required."
-        );
-      }
-  
-      if (
-        password.length < 6
-      ) {
-        throw new Error(
-          "Password must contain at least 6 characters."
-        );
-      }
-  
-      const newUser: AuthUser =
-        {
-          id:
-            crypto.randomUUID(),
-  
-          name:
-            name.trim(),
-  
-          email:
-            email
-              .trim()
-              .toLowerCase(),
-  
-          role:
-            "Administrator",
-        };
-  
-      setUser(
-        newUser
-      );
-  
-      localStorage.setItem(
-        STORAGE_KEY,
-  
-        JSON.stringify(
-          newUser
-        )
-      );
     }
+  
   
     function logout() {
-      setUser(null);
+      localStorage.removeItem(
+        TOKEN_STORAGE_KEY
+      );
   
       localStorage.removeItem(
-        STORAGE_KEY
+        "llm_gateway_user"
       );
+  
+      setUser(null);
     }
+  
   
     return (
       <AuthContext.Provider
@@ -278,27 +325,50 @@ import {
     );
   }
   
-  function getNameFromEmail(
-    email: string
-  ) {
-    const username =
-      email
-        .trim()
-        .split("@")[0];
   
-    if (!username) {
-      return "Developer";
+  function mapBackendUser(
+    backendUser: BackendUser
+  ): AuthUser {
+    return {
+      id:
+        backendUser.id,
+  
+      name:
+        backendUser.name,
+  
+      email:
+        backendUser.email,
+  
+      role:
+        backendUser.role ===
+        "ADMIN"
+          ? "Administrator"
+          : "Developer",
+    };
+  }
+  
+  
+  function getApiErrorMessage(
+    error: unknown,
+    fallback: string
+  ) {
+    if (
+      axios.isAxiosError<
+        ErrorResponse
+      >(error)
+    ) {
+      return (
+        error.response?.data
+          ?.message ??
+        fallback
+      );
     }
   
-    return username
-      .split(/[._-]/)
-      .filter(Boolean)
-      .map(
-        (word) =>
-          word
-            .charAt(0)
-            .toUpperCase() +
-          word.slice(1)
-      )
-      .join(" ");
+    if (
+      error instanceof Error
+    ) {
+      return error.message;
+    }
+  
+    return fallback;
   }

@@ -13,10 +13,11 @@ import type {
   import {
     createProject,
     deleteProject,
-    getProjectById,
-    getProjects,
+    getProjectByIdForOwner,
+    getProjectsByOwner,
     updateProject,
   } from "../services/project.service";
+  
   
   export async function createProjectController(
     req: Request,
@@ -32,28 +33,38 @@ import type {
       if (!validation.success) {
         return res.status(400).json({
           success: false,
+  
           message:
             "Invalid project data.",
+  
           errors:
             validation.error.flatten(),
         });
       }
   
+      const ownerId =
+        res.locals.authUser.userId;
+  
       const project =
-        await createProject(
-          validation.data
-        );
+        await createProject({
+          ...validation.data,
+          ownerId,
+        });
   
       return res.status(201).json({
         success: true,
+  
         message:
           "Project created successfully.",
-        data: project,
+  
+        data:
+          project,
       });
     } catch (error) {
       next(error);
     }
   }
+  
   
   export async function getProjectsController(
     _req: Request,
@@ -61,19 +72,28 @@ import type {
     next: NextFunction
   ) {
     try {
+      const ownerId =
+        res.locals.authUser.userId;
+  
       const projects =
-        await getProjects();
+        await getProjectsByOwner(
+          ownerId
+        );
   
       return res.status(200).json({
         success: true,
+  
         message:
           "Projects fetched successfully.",
-        data: projects,
+  
+        data:
+          projects,
       });
     } catch (error) {
       next(error);
     }
   }
+  
   
   export async function getProjectByIdController(
     req: Request,
@@ -89,21 +109,28 @@ import type {
       if (!validation.success) {
         return res.status(400).json({
           success: false,
+  
           message:
             "Invalid project ID.",
+  
           errors:
             validation.error.flatten(),
         });
       }
   
+      const ownerId =
+        res.locals.authUser.userId;
+  
       const project =
-        await getProjectById(
-          validation.data.id
+        await getProjectByIdForOwner(
+          validation.data.id,
+          ownerId
         );
   
       if (!project) {
         return res.status(404).json({
           success: false,
+  
           message:
             "Project not found.",
         });
@@ -111,14 +138,18 @@ import type {
   
       return res.status(200).json({
         success: true,
+  
         message:
           "Project fetched successfully.",
-        data: project,
+  
+        data:
+          project,
       });
     } catch (error) {
       next(error);
     }
   }
+  
   
   export async function updateProjectController(
     req: Request,
@@ -134,8 +165,10 @@ import type {
       if (!idValidation.success) {
         return res.status(400).json({
           success: false,
+  
           message:
             "Invalid project ID.",
+  
           errors:
             idValidation.error.flatten(),
         });
@@ -149,21 +182,28 @@ import type {
       if (!bodyValidation.success) {
         return res.status(400).json({
           success: false,
+  
           message:
             "Invalid project data.",
+  
           errors:
             bodyValidation.error.flatten(),
         });
       }
   
+      const ownerId =
+        res.locals.authUser.userId;
+  
       const existingProject =
-        await getProjectById(
-          idValidation.data.id
+        await getProjectByIdForOwner(
+          idValidation.data.id,
+          ownerId
         );
   
       if (!existingProject) {
         return res.status(404).json({
           success: false,
+  
           message:
             "Project not found.",
         });
@@ -177,14 +217,18 @@ import type {
   
       return res.status(200).json({
         success: true,
+  
         message:
           "Project updated successfully.",
-        data: project,
+  
+        data:
+          project,
       });
     } catch (error) {
       next(error);
     }
   }
+  
   
   export async function deleteProjectController(
     req: Request,
@@ -200,21 +244,28 @@ import type {
       if (!validation.success) {
         return res.status(400).json({
           success: false,
+  
           message:
             "Invalid project ID.",
+  
           errors:
             validation.error.flatten(),
         });
       }
   
+      const ownerId =
+        res.locals.authUser.userId;
+  
       const existingProject =
-        await getProjectById(
-          validation.data.id
+        await getProjectByIdForOwner(
+          validation.data.id,
+          ownerId
         );
   
       if (!existingProject) {
         return res.status(404).json({
           success: false,
+  
           message:
             "Project not found.",
         });
@@ -226,6 +277,7 @@ import type {
   
       return res.status(200).json({
         success: true,
+  
         message:
           "Project deleted successfully.",
       });

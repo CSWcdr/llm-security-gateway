@@ -5,37 +5,51 @@ import {
   
   import {
     KeyRound,
+    Loader2,
     Plus,
     Search,
     ShieldCheck,
   } from "lucide-react";
   
-  import { toast } from "sonner";
+  import {
+    toast,
+  } from "sonner";
   
   import ApiKeyRow from "../components/api-keys/ApiKeyRow";
   import ApiKeySecretModal from "../components/api-keys/ApiKeySecretModal";
   import CreateApiKeyModal from "../components/api-keys/CreateApiKeyModal";
   
-  import { useApiKeys } from "../hooks/useApiKeys";
+  import {
+    useApiKeys,
+  } from "../hooks/useApiKeys";
   
   import type {
     ApiKeyEnvironment,
   } from "../types";
+  
   
   type StatusFilter =
     | "All"
     | "Active"
     | "Revoked";
   
+  
   export default function ApiKeysPage() {
     const {
       apiKeys,
       createApiKey,
       revokeApiKey,
-    } = useApiKeys();
+      loading,
+    } =
+      useApiKeys();
   
-    const [search, setSearch] =
+  
+    const [
+      search,
+      setSearch,
+    ] =
       useState("");
+  
   
     const [
       statusFilter,
@@ -45,27 +59,36 @@ import {
         "All"
       );
   
+  
     const [
       createModalOpen,
       setCreateModalOpen,
-    ] = useState(false);
+    ] =
+      useState(false);
+  
   
     const [
       secretModalOpen,
       setSecretModalOpen,
-    ] = useState(false);
+    ] =
+      useState(false);
+  
   
     const [
       generatedSecret,
       setGeneratedSecret,
-    ] = useState("");
+    ] =
+      useState("");
+  
   
     const filteredApiKeys =
       useMemo(() => {
         return apiKeys.filter(
           (apiKey) => {
             const query =
-              search.toLowerCase();
+              search
+                .trim()
+                .toLowerCase();
   
             const matchesSearch =
               apiKey.name
@@ -97,12 +120,14 @@ import {
         statusFilter,
       ]);
   
+  
     const activeKeys =
       apiKeys.filter(
         (apiKey) =>
           apiKey.status ===
           "Active"
       ).length;
+  
   
     const revokedKeys =
       apiKeys.filter(
@@ -111,15 +136,20 @@ import {
           "Revoked"
       ).length;
   
+  
     const totalRequests =
       apiKeys.reduce(
-        (total, apiKey) =>
+        (
+          total,
+          apiKey
+        ) =>
           total +
           apiKey.requestCount,
         0
       );
   
-    function handleCreateApiKey(
+  
+    async function handleCreateApiKey(
       input: {
         name: string;
   
@@ -130,23 +160,44 @@ import {
           ApiKeyEnvironment;
       }
     ) {
-      const result =
-        createApiKey(input);
+      try {
+        const result =
+          await createApiKey(
+            input
+          );
   
-      setGeneratedSecret(
-        result.secret
-      );
   
-      setSecretModalOpen(
-        true
-      );
+        setGeneratedSecret(
+          result.secret
+        );
   
-      toast.success(
-        "API key generated"
-      );
+  
+        setCreateModalOpen(
+          false
+        );
+  
+  
+        setSecretModalOpen(
+          true
+        );
+  
+  
+        toast.success(
+          "API key generated"
+        );
+      } catch (error) {
+        toast.error(
+          error instanceof Error
+            ? error.message
+            : "Failed to create API key."
+        );
+  
+        throw error;
+      }
     }
   
-    function handleRevoke(
+  
+    async function handleRevoke(
       apiKeyId: string
     ) {
       const confirmed =
@@ -154,16 +205,30 @@ import {
           "Revoke this API key? Applications using it will immediately lose gateway access."
         );
   
+  
       if (!confirmed) {
         return;
       }
   
-      revokeApiKey(apiKeyId);
   
-      toast.success(
-        "API key revoked"
-      );
+      try {
+        await revokeApiKey(
+          apiKeyId
+        );
+  
+  
+        toast.success(
+          "API key revoked"
+        );
+      } catch (error) {
+        toast.error(
+          error instanceof Error
+            ? error.message
+            : "Failed to revoke API key."
+        );
+      }
     }
+  
   
     return (
       <div className="space-y-6">
@@ -183,6 +248,7 @@ import {
   
           </div>
   
+  
           <button
             onClick={() =>
               setCreateModalOpen(
@@ -197,6 +263,7 @@ import {
           </button>
   
         </div>
+  
   
         {/* Security Notice */}
         <div className="flex gap-3 rounded-2xl border border-blue-500/15 bg-blue-500/5 p-4">
@@ -219,6 +286,7 @@ import {
           </div>
   
         </div>
+  
   
         {/* Metrics */}
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -248,10 +316,13 @@ import {
   
           <StatCard
             label="Authenticated Requests"
-            value={totalRequests.toLocaleString()}
+            value={
+              totalRequests.toLocaleString()
+            }
           />
   
         </div>
+  
   
         {/* Filters */}
         <div className="flex flex-col gap-3 rounded-2xl border border-slate-800 bg-slate-900/30 p-4 sm:flex-row">
@@ -264,7 +335,9 @@ import {
             />
   
             <input
-              value={search}
+              value={
+                search
+              }
               onChange={(event) =>
                 setSearch(
                   event.target.value
@@ -276,6 +349,7 @@ import {
   
           </div>
   
+  
           <div className="flex gap-2">
   
             {(
@@ -284,30 +358,35 @@ import {
                 "Active",
                 "Revoked",
               ] as StatusFilter[]
-            ).map((status) => (
+            ).map(
+              (status) => (
   
-              <button
-                key={status}
-                onClick={() =>
-                  setStatusFilter(
+                <button
+                  key={
                     status
-                  )
-                }
-                className={`rounded-lg px-3 py-2 text-xs font-medium transition ${
-                  statusFilter ===
-                  status
-                    ? "bg-blue-500/10 text-blue-400"
-                    : "text-slate-500 hover:bg-slate-800 hover:text-slate-300"
-                }`}
-              >
-                {status}
-              </button>
+                  }
+                  onClick={() =>
+                    setStatusFilter(
+                      status
+                    )
+                  }
+                  className={`rounded-lg px-3 py-2 text-xs font-medium transition ${
+                    statusFilter ===
+                    status
+                      ? "bg-blue-500/10 text-blue-400"
+                      : "text-slate-500 hover:bg-slate-800 hover:text-slate-300"
+                  }`}
+                >
+                  {status}
+                </button>
   
-            ))}
+              )
+            )}
   
           </div>
   
         </div>
+  
   
         {/* Table */}
         <div className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-900/40">
@@ -333,108 +412,142 @@ import {
   
           </div>
   
-          <div className="overflow-x-auto">
   
-            <table className="w-full text-left">
+          {loading ? (
   
-              <thead>
+            <div className="flex items-center justify-center py-16">
   
-                <tr className="border-b border-slate-800 text-[10px] uppercase tracking-wider text-slate-600">
+              <Loader2
+                size={22}
+                className="animate-spin text-blue-400"
+              />
   
-                  <th className="px-5 py-3 font-medium">
-                    Key
-                  </th>
-  
-                  <th className="px-5 py-3 font-medium">
-                    Project
-                  </th>
-  
-                  <th className="px-5 py-3 font-medium">
-                    Status
-                  </th>
-  
-                  <th className="px-5 py-3 font-medium">
-                    Requests
-                  </th>
-  
-                  <th className="px-5 py-3 font-medium">
-                    Last Used
-                  </th>
-  
-                  <th className="px-5 py-3 font-medium">
-                    Created
-                  </th>
-  
-                  <th className="px-5 py-3 font-medium">
-                    Action
-                  </th>
-  
-                </tr>
-  
-              </thead>
-  
-              <tbody>
-  
-                {filteredApiKeys.map(
-                  (apiKey) => (
-                    <ApiKeyRow
-                      key={
-                        apiKey.id
-                      }
-                      apiKey={
-                        apiKey
-                      }
-                      onRevoke={
-                        handleRevoke
-                      }
-                    />
-                  )
-                )}
-  
-              </tbody>
-  
-            </table>
-  
-          </div>
-  
-          {filteredApiKeys.length ===
-            0 && (
-            <div className="py-16 text-center">
-  
-              <p className="text-sm text-slate-400">
-                No API keys found.
-              </p>
-  
-              <p className="mt-1 text-xs text-slate-600">
-                Try changing your search or filter.
-              </p>
+              <span className="ml-3 text-sm text-slate-500">
+                Loading API keys...
+              </span>
   
             </div>
+  
+          ) : (
+  
+            <>
+              <div className="overflow-x-auto">
+  
+                <table className="w-full text-left">
+  
+                  <thead>
+  
+                    <tr className="border-b border-slate-800 text-[10px] uppercase tracking-wider text-slate-600">
+  
+                      <th className="px-5 py-3 font-medium">
+                        Key
+                      </th>
+  
+                      <th className="px-5 py-3 font-medium">
+                        Project
+                      </th>
+  
+                      <th className="px-5 py-3 font-medium">
+                        Status
+                      </th>
+  
+                      <th className="px-5 py-3 font-medium">
+                        Requests
+                      </th>
+  
+                      <th className="px-5 py-3 font-medium">
+                        Last Used
+                      </th>
+  
+                      <th className="px-5 py-3 font-medium">
+                        Created
+                      </th>
+  
+                      <th className="px-5 py-3 font-medium">
+                        Action
+                      </th>
+  
+                    </tr>
+  
+                  </thead>
+  
+  
+                  <tbody>
+  
+                    {filteredApiKeys.map(
+                      (apiKey) => (
+  
+                        <ApiKeyRow
+                          key={
+                            apiKey.id
+                          }
+                          apiKey={
+                            apiKey
+                          }
+                          onRevoke={
+                            handleRevoke
+                          }
+                        />
+  
+                      )
+                    )}
+  
+                  </tbody>
+  
+                </table>
+  
+              </div>
+  
+  
+              {filteredApiKeys.length ===
+                0 && (
+  
+                <div className="py-16 text-center">
+  
+                  <p className="text-sm text-slate-400">
+                    No API keys found.
+                  </p>
+  
+                  <p className="mt-1 text-xs text-slate-600">
+                    Create an API key for one of your projects.
+                  </p>
+  
+                </div>
+  
+              )}
+            </>
+  
           )}
   
         </div>
+  
   
         <CreateApiKeyModal
           open={
             createModalOpen
           }
+  
           onClose={() =>
             setCreateModalOpen(
               false
             )
           }
+  
           onCreate={
             handleCreateApiKey
           }
         />
   
+  
         <ApiKeySecretModal
           open={
             secretModalOpen
           }
+  
           secret={
             generatedSecret
           }
+  
           onClose={() => {
   
             setSecretModalOpen(
@@ -442,9 +555,9 @@ import {
             );
   
             /*
-             * Remove full secret
-             * from React memory once
-             * user closes it.
+             * Raw API key disappears
+             * from frontend memory after
+             * the one-time reveal closes.
              */
             setGeneratedSecret(
               ""
@@ -456,10 +569,12 @@ import {
     );
   }
   
+  
   function StatCard({
     label,
     value,
-    valueClassName = "text-white",
+    valueClassName =
+      "text-white",
   }: {
     label: string;
     value: string;
