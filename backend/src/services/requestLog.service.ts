@@ -6,6 +6,7 @@ import {
     prisma,
   } from "../config/prisma";
   
+  
   type CreateRequestLogInput = {
     projectId: string;
     apiKeyId?: string;
@@ -39,6 +40,7 @@ import {
     inputFindings?: Prisma.InputJsonValue;
     outputFindings?: Prisma.InputJsonValue;
   };
+  
   
   export async function createRequestLog(
     data: CreateRequestLogInput
@@ -90,12 +92,30 @@ import {
     });
   }
   
+  
   export async function getRequestLogs(
     projectId: string
   ) {
     return prisma.requestLog.findMany({
       where: {
         projectId,
+      },
+  
+      include: {
+        project: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+  
+        apiKey: {
+          select: {
+            id: true,
+            name: true,
+            keyPrefix: true,
+          },
+        },
       },
   
       orderBy: {
@@ -106,12 +126,30 @@ import {
     });
   }
   
+  
   export async function getRequestLogById(
     id: string
   ) {
     return prisma.requestLog.findUnique({
       where: {
         id,
+      },
+  
+      include: {
+        project: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+  
+        apiKey: {
+          select: {
+            id: true,
+            name: true,
+            keyPrefix: true,
+          },
+        },
       },
     });
   }

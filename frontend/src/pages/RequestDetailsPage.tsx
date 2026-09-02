@@ -1,12 +1,17 @@
 import {
+    useEffect,
+    useState,
+  } from "react";
+  
+  import {
     Activity,
     ArrowLeft,
     Clock3,
     Coins,
     Cpu,
-    Globe2,
     Hash,
     KeyRound,
+    Loader2,
     ShieldAlert,
     ShieldCheck,
   } from "lucide-react";
@@ -19,37 +24,147 @@ import {
   import RequestStatusBadge from "../components/logs/RequestStatusBadge";
   
   import {
-    mockRequestLogs,
-  } from "../data/mockData";
+    getRequestLogById,
+  } from "../services/logs.service";
+  
+  import type {
+    GatewayRequestLog,
+  } from "../types";
+  
   
   export default function RequestDetailsPage() {
-    const { requestId } =
+    const {
+      requestId,
+    } =
       useParams<{
         requestId: string;
       }>();
   
-    const request =
-      mockRequestLogs.find(
-        (request) =>
-          request.id ===
-          requestId
-      );
   
-    if (!request) {
+    const [
+      request,
+      setRequest,
+    ] =
+      useState<
+        GatewayRequestLog | null
+      >(null);
+  
+  
+    const [
+      loading,
+      setLoading,
+    ] =
+      useState(true);
+  
+  
+    const [
+      error,
+      setError,
+    ] =
+      useState("");
+  
+  
+    useEffect(() => {
+      if (!requestId) {
+        setLoading(false);
+  
+        setError(
+          "Invalid request ID."
+        );
+  
+        return;
+      }
+  
+      let active = true;
+  
+  
+      async function loadRequest() {
+        try {
+          setLoading(true);
+  
+          setError("");
+  
+          const result =
+            await getRequestLogById(
+              requestId!
+            );
+  
+          if (active) {
+            setRequest(result);
+          }
+        } catch (error) {
+          if (!active) {
+            return;
+          }
+  
+          setRequest(null);
+  
+          setError(
+            error instanceof Error
+              ? error.message
+              : "Failed to load request."
+          );
+        } finally {
+          if (active) {
+            setLoading(false);
+          }
+        }
+      }
+  
+  
+      void loadRequest();
+  
+  
+      return () => {
+        active = false;
+      };
+    }, [
+      requestId,
+    ]);
+  
+  
+    if (loading) {
+      return (
+        <div className="flex min-h-[60vh] items-center justify-center">
+  
+          <Loader2
+            size={26}
+            className="animate-spin text-blue-400"
+          />
+  
+          <span className="ml-3 text-sm text-slate-500">
+            Loading request details...
+          </span>
+  
+        </div>
+      );
+    }
+  
+  
+    if (
+      error ||
+      !request
+    ) {
       return (
         <div className="flex min-h-[60vh] flex-col items-center justify-center">
   
-          <h1 className="text-xl font-semibold text-white">
+          <ShieldAlert
+            size={30}
+            className="text-red-400"
+          />
+  
+          <h1 className="mt-4 text-xl font-semibold text-white">
             Request not found
           </h1>
   
-          <p className="mt-2 text-sm text-slate-500">
-            The request ID may be invalid.
+          <p className="mt-2 max-w-sm text-center text-sm text-slate-500">
+            {error ||
+              "The request ID may be invalid."}
           </p>
   
           <Link
             to="/logs"
-            className="mt-5 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-medium text-white"
+            className="mt-5 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-blue-500"
           >
             Back to Logs
           </Link>
@@ -58,9 +173,16 @@ import {
       );
     }
   
+  
     const totalTokens =
       request.inputTokens +
       request.outputTokens;
+  
+  
+    const blocked =
+      request.status ===
+      "Blocked";
+  
   
     return (
       <div className="space-y-6">
@@ -70,10 +192,13 @@ import {
           to="/logs"
           className="inline-flex items-center gap-2 text-sm text-slate-500 transition hover:text-white"
         >
-          <ArrowLeft size={16} />
+          <ArrowLeft
+            size={16}
+          />
   
           Request Logs
         </Link>
+  
   
         {/* Header */}
         <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-start">
@@ -82,7 +207,7 @@ import {
   
             <div className="flex flex-wrap items-center gap-3">
   
-              <h1 className="font-mono text-xl font-semibold text-white">
+              <h1 className="break-all font-mono text-xl font-semibold text-white">
                 {request.id}
               </h1>
   
@@ -94,11 +219,13 @@ import {
   
             </div>
   
+  
             <p className="mt-2 text-sm text-slate-500">
-              Gateway request execution details and security analysis.
+              Real gateway execution details and security analysis.
             </p>
   
           </div>
+  
   
           <p className="text-xs text-slate-600">
             {new Date(
@@ -107,6 +234,7 @@ import {
           </p>
   
         </div>
+  
   
         {/* Metadata */}
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -119,6 +247,7 @@ import {
             }
           />
   
+  
           <MetadataCard
             icon={Cpu}
             label="Model"
@@ -127,23 +256,26 @@ import {
             }
           />
   
+  
           <MetadataCard
             icon={Clock3}
             label="Latency"
             value={`${request.latencyMs} ms`}
           />
   
+  
           <MetadataCard
             icon={Coins}
             label="Estimated Cost"
             value={`$${request.estimatedCost.toFixed(
-              4
+              6
             )}`}
           />
   
         </div>
   
-        {/* Request / Response */}
+  
+        {/* Request + Response */}
         <div className="grid gap-6 xl:grid-cols-2">
   
           {/* Request */}
@@ -152,20 +284,21 @@ import {
             <div className="border-b border-slate-800 p-5">
   
               <h2 className="text-sm font-semibold text-white">
-                Request
+                Processed Request
               </h2>
   
               <p className="mt-1 text-xs text-slate-500">
-                Prompt received by the gateway.
+                Safe prompt stored after security processing and masking.
               </p>
   
             </div>
   
+  
             <div className="p-5">
   
-              <div className="rounded-xl border border-slate-800 bg-slate-950 p-4">
+              <div className="min-h-40 rounded-xl border border-slate-800 bg-slate-950 p-4">
   
-                <pre className="whitespace-pre-wrap font-sans text-sm leading-7 text-slate-300">
+                <pre className="whitespace-pre-wrap wrap-break-word font-sans text-sm leading-7 text-slate-300">
                   {
                     request.promptPreview
                   }
@@ -177,28 +310,30 @@ import {
   
           </div>
   
+  
           {/* Response */}
           <div className="rounded-2xl border border-slate-800 bg-slate-900/40">
   
             <div className="border-b border-slate-800 p-5">
   
               <h2 className="text-sm font-semibold text-white">
-                Response
+                Response Preview
               </h2>
   
               <p className="mt-1 text-xs text-slate-500">
-                Output returned after security processing.
+                Safe output preview retained by the gateway.
               </p>
   
             </div>
+  
   
             <div className="p-5">
   
               {request.responsePreview ? (
   
-                <div className="rounded-xl border border-slate-800 bg-slate-950 p-4">
+                <div className="min-h-40 rounded-xl border border-slate-800 bg-slate-950 p-4">
   
-                  <pre className="whitespace-pre-wrap font-sans text-sm leading-7 text-slate-300">
+                  <pre className="whitespace-pre-wrap wrap-break-word font-sans text-sm leading-7 text-slate-300">
                     {
                       request.responsePreview
                     }
@@ -208,21 +343,44 @@ import {
   
               ) : (
   
-                <div className="flex min-h-32.5 items-center justify-center rounded-xl border border-red-500/10 bg-red-500/5">
+                <div
+                  className={`flex min-h-40 items-center justify-center rounded-xl border ${
+                    blocked
+                      ? "border-red-500/10 bg-red-500/5"
+                      : "border-slate-800 bg-slate-950"
+                  }`}
+                >
   
                   <div className="max-w-xs text-center">
   
                     <ShieldAlert
                       size={22}
-                      className="mx-auto text-red-400"
+                      className={`mx-auto ${
+                        blocked
+                          ? "text-red-400"
+                          : "text-slate-600"
+                      }`}
                     />
   
-                    <p className="mt-3 text-sm font-medium text-red-400">
-                      Request blocked
+                    <p
+                      className={`mt-3 text-sm font-medium ${
+                        blocked
+                          ? "text-red-400"
+                          : "text-slate-400"
+                      }`}
+                    >
+                      {blocked
+                        ? "Request blocked"
+                        : "No response preview"}
                     </p>
   
                     <p className="mt-2 text-xs leading-5 text-slate-600">
-                      The gateway stopped this request before it reached the LLM provider.
+                      {blocked
+                        ? request.model ===
+                          "Not called"
+                          ? "Security stopped this request before the LLM provider was called."
+                          : "The gateway blocked the response during security processing."
+                        : "No response preview was stored for this request."}
                     </p>
   
                   </div>
@@ -236,6 +394,7 @@ import {
           </div>
   
         </div>
+  
   
         {/* Security */}
         <div className="rounded-2xl border border-slate-800 bg-slate-900/40">
@@ -255,11 +414,13 @@ import {
   
             </div>
   
+  
             <p className="mt-1 text-xs text-slate-500">
-              Security findings generated during gateway processing.
+              Findings generated during real input and output security processing.
             </p>
   
           </div>
+  
   
           {request.securityFindings.length >
           0 ? (
@@ -291,15 +452,17 @@ import {
                       />
                     </div>
   
+  
                     <div>
   
-                      <div className="flex items-center gap-2">
+                      <div className="flex flex-wrap items-center gap-2">
   
                         <p className="text-sm font-medium text-slate-200">
                           {
                             finding.type
                           }
                         </p>
+  
   
                         <span
                           className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${
@@ -318,6 +481,7 @@ import {
                         </span>
   
                       </div>
+  
   
                       <p className="mt-2 text-xs leading-5 text-slate-500">
                         {
@@ -345,6 +509,7 @@ import {
   
               </div>
   
+  
               <div>
   
                 <p className="text-sm font-medium text-emerald-400">
@@ -352,7 +517,7 @@ import {
                 </p>
   
                 <p className="mt-1 text-xs text-slate-600">
-                  The request passed all configured security checks.
+                  The request passed the configured security checks.
                 </p>
   
               </div>
@@ -362,6 +527,7 @@ import {
           )}
   
         </div>
+  
   
         {/* Technical Metadata */}
         <div className="rounded-2xl border border-slate-800 bg-slate-900/40">
@@ -374,6 +540,7 @@ import {
   
           </div>
   
+  
           <div className="grid gap-5 p-5 sm:grid-cols-2 lg:grid-cols-4">
   
             <TechnicalItem
@@ -384,13 +551,6 @@ import {
               }
             />
   
-            <TechnicalItem
-              icon={Globe2}
-              label="IP Address"
-              value={
-                request.ipAddress
-              }
-            />
   
             <TechnicalItem
               icon={Hash}
@@ -400,6 +560,7 @@ import {
               }
             />
   
+  
             <TechnicalItem
               icon={Hash}
               label="Output Tokens"
@@ -408,14 +569,26 @@ import {
               }
             />
   
+  
+            <TechnicalItem
+              icon={Hash}
+              label="Total Tokens"
+              value={
+                totalTokens.toString()
+              }
+            />
+  
           </div>
+  
   
           <div className="border-t border-slate-800 px-5 py-4">
   
-            <p className="text-xs text-slate-600">
-              Total tokens:{" "}
-              <span className="font-medium text-slate-400">
-                {totalTokens}
+            <p className="break-all text-xs text-slate-600">
+              Project ID:{" "}
+              <span className="font-mono text-slate-400">
+                {
+                  request.projectId
+                }
               </span>
             </p>
   
@@ -427,8 +600,10 @@ import {
     );
   }
   
+  
   type IconComponent =
     typeof Activity;
+  
   
   function MetadataCard({
     icon: Icon,
@@ -444,11 +619,14 @@ import {
   
         <div className="flex items-center gap-2 text-xs text-slate-500">
   
-          <Icon size={14} />
+          <Icon
+            size={14}
+          />
   
           {label}
   
         </div>
+  
   
         <p className="mt-2 truncate text-sm font-medium text-slate-200">
           {value}
@@ -457,6 +635,7 @@ import {
       </div>
     );
   }
+  
   
   function TechnicalItem({
     icon: Icon,
@@ -472,11 +651,14 @@ import {
   
         <div className="flex items-center gap-2 text-xs text-slate-600">
   
-          <Icon size={13} />
+          <Icon
+            size={13}
+          />
   
           {label}
   
         </div>
+  
   
         <p className="mt-2 break-all font-mono text-xs text-slate-300">
           {value}

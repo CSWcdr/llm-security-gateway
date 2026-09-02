@@ -1,237 +1,432 @@
+import axios from "axios";
+
+import { api } from "../lib/api";
+
 import type {
-    GatewayRequestResult,
-    GatewaySecurityCheck,
-  } from "../types";
-  
-  type SendGatewayRequestInput = {
-    projectId: string;
-    prompt: string;
+  GatewayRequestResult,
+  GatewaySecurityCheck,
+} from "../types";
+
+type SendGatewayRequestInput = {
+  apiKey: string;
+  prompt: string;
+};
+
+type BackendFindingType =
+  | "PROMPT_INJECTION"
+  | "PII"
+  | "SECRET";
+
+type BackendFindingAction =
+  | "BLOCK"
+  | "WARN"
+  | "MASK"
+  | "ALLOW";
+
+type BackendFinding = {
+  type: BackendFindingType;
+  detected: boolean;
+  action: BackendFindingAction;
+  matches: string[];
+};
+
+type BackendUsage = {
+  inputTokens: number;
+  outputTokens: number;
+  totalTokens: number;
+};
+
+type GatewaySuccessResponse = {
+  success: true;
+  message: string;
+
+  data: {
+    requestId: string;
+
+    decision: "ALLOWED";
+
+    processedPrompt: string;
+
+    response: string;
+
     model: string;
+
+    usage: BackendUsage;
+
+    latencyMs: number;
+
+    estimatedCostUsd: number;
+
+    security: {
+      inputFindings: BackendFinding[];
+      outputFindings: BackendFinding[];
+    };
   };
-  
-  function delay(ms: number) {
-    return new Promise((resolve) =>
-      setTimeout(resolve, ms)
-    );
+};
+
+type GatewayBlockedData = {
+  decision: "BLOCKED";
+
+  stage?: "INPUT" | "OUTPUT";
+
+  findings?: BackendFinding[];
+
+  model?: string;
+
+  usage?: BackendUsage;
+
+  latencyMs?: number;
+
+  estimatedCostUsd?: number;
+
+  security?: {
+    inputFindings?: BackendFinding[];
+    outputFindings?: BackendFinding[];
+  };
+};
+
+type GatewayErrorResponse = {
+  success?: false;
+
+  message?: string;
+
+  data?: GatewayBlockedData;
+
+  errors?: unknown;
+};
+
+function getFindingName(
+  type: BackendFindingType
+) {
+  switch (type) {
+    case "PROMPT_INJECTION":
+      return "Prompt Injection";
+
+    case "PII":
+      return "PII Detection";
+
+    case "SECRET":
+      return "Secret Detection";
   }
-  
-  function containsPromptInjection(
-    prompt: string
-  ) {
-    const suspiciousPatterns = [
-      "ignore previous instructions",
-      "ignore all previous",
-      "system prompt",
-      "developer message",
-      "reveal your instructions",
-      "bypass security",
-      "jailbreak",
-    ];
-  
-    const normalizedPrompt =
-      prompt.toLowerCase();
-  
-    return suspiciousPatterns.some(
-      (pattern) =>
-        normalizedPrompt.includes(pattern)
-    );
+}
+
+function getFindingStatus(
+  finding: BackendFinding
+): GatewaySecurityCheck["status"] {
+  if (!finding.detected) {
+    return "passed";
   }
-  
-  function containsPII(prompt: string) {
-    const emailPattern =
-      /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/i;
-  
-    const phonePattern =
-      /\b\d{10}\b/;
-  
-    return (
-      emailPattern.test(prompt) ||
-      phonePattern.test(prompt)
-    );
+
+  if (finding.action === "BLOCK") {
+    return "blocked";
   }
-  
-  function containsPossibleSecret(
-    prompt: string
-  ) {
-    const normalizedPrompt =
-      prompt.toLowerCase();
-  
-    return (
-      normalizedPrompt.includes("api_key=") ||
-      normalizedPrompt.includes("password=") ||
-      normalizedPrompt.includes("secret=") ||
-      normalizedPrompt.includes("sk-")
-    );
+
+  return "warning";
+}
+
+function convertFindingToCheck(
+  finding: BackendFinding,
+  stage: "input" | "output"
+): GatewaySecurityCheck {
+  const name = getFindingName(
+    finding.type
+  );
+
+  const prefix =
+    stage === "output"
+      ? "Output "
+      : "";
+
+  if (!finding.detected) {
+    return {
+      id: `${stage}-${finding.type.toLowerCase()}`,
+
+      name: `${prefix}${name}`,
+
+      description:
+        stage === "input"
+          ? `No ${name.toLowerCase()} issue detected in the request.`
+          : `No ${name.toLowerCase()} issue detected in the LLM response.`,
+
+      status: "passed",
+    };
   }
-  
-  export async function sendGatewayRequest(
-    input: SendGatewayRequestInput
-  ): Promise<GatewayRequestResult> {
-    const startedAt = performance.now();
-  
-    /*
-     * Simulate network + security
-     * processing latency.
-     */
-    await delay(900);
-  
-    const promptInjection =
-      containsPromptInjection(
-        input.prompt
-      );
-  
-    const piiDetected =
-      containsPII(input.prompt);
-  
-    const secretDetected =
-      containsPossibleSecret(
-        input.prompt
-      );
-  
-    const securityChecks: GatewaySecurityCheck[] =
-      [
-        {
-          id: "auth",
-          name: "Authentication",
-          description:
-            "Project and API credential verified.",
-          status: "passed",
-        },
-  
-        {
-          id: "rate-limit",
-          name: "Rate Limit",
-          description:
-            "Request is within the configured quota.",
-          status: "passed",
-        },
-  
-        {
-          id: "prompt-injection",
-          name: "Prompt Injection",
-          description: promptInjection
-            ? "Potential instruction override attack detected."
-            : "No prompt injection patterns detected.",
-          status: promptInjection
-            ? "blocked"
-            : "passed",
-        },
-  
-        {
-          id: "pii",
-          name: "PII Detection",
-          description: piiDetected
-            ? "Potential personal information detected."
-            : "No obvious personal information detected.",
-          status: piiDetected
-            ? "warning"
-            : "passed",
-        },
-  
-        {
-          id: "secret",
-          name: "Secret Detection",
-          description: secretDetected
-            ? "Potential credential or secret detected."
-            : "No obvious secrets detected.",
-          status: secretDetected
-            ? "warning"
-            : "passed",
-        },
-      ];
-  
-    /*
-     * For the mock gateway,
-     * prompt injection is our only
-     * hard blocking condition.
-     */
-    const blocked =
-      promptInjection;
-  
-    const latencyMs = Math.round(
-      performance.now() - startedAt
-    );
-  
-    if (blocked) {
-      return {
-        requestId:
-          crypto.randomUUID(),
-  
-        status: "blocked",
-  
-        response: null,
-  
-        securityChecks,
-  
-        model: input.model,
-  
-        latencyMs,
-  
-        inputTokens:
-          Math.max(
-            1,
-            Math.round(
-              input.prompt.length / 4
-            )
-          ),
-  
-        outputTokens: 0,
-  
-        estimatedCost: 0,
-  
-        timestamp:
-          new Date().toISOString(),
-      };
-    }
-  
-    /*
-     * Mock LLM response.
-     *
-     * Later this entire section
-     * will be replaced by a real
-     * backend + Gemini/OpenAI call.
-     */
-    const response =
-      `Gateway request accepted successfully.\n\n` +
-      `Your prompt was processed securely for project ${input.projectId}.\n\n` +
-      `Mock LLM Response:\n` +
-      `This is a simulated response from ${input.model}. ` +
-      `Once the backend is connected, the real model response will appear here.`;
-  
-    const inputTokens =
-      Math.max(
-        1,
-        Math.round(
-          input.prompt.length / 4
+
+  const matchCount =
+    finding.matches.length;
+
+  let description =
+    `${name} detected. ` +
+    `Security policy action: ${finding.action}.`;
+
+  if (matchCount > 0) {
+    description +=
+      ` ${matchCount} match` +
+      `${matchCount === 1 ? "" : "es"} found.`;
+  }
+
+  return {
+    id: `${stage}-${finding.type.toLowerCase()}`,
+
+    name: `${prefix}${name}`,
+
+    description,
+
+    status:
+      getFindingStatus(finding),
+  };
+}
+
+function buildBaseChecks(): GatewaySecurityCheck[] {
+  return [
+    {
+      id: "authentication",
+
+      name: "Authentication",
+
+      description:
+        "Gateway API key authenticated successfully.",
+
+      status: "passed",
+    },
+
+    {
+      id: "rate-limit",
+
+      name: "Rate Limit",
+
+      description:
+        "Request passed the configured rate-limit policy.",
+
+      status: "passed",
+    },
+  ];
+}
+
+function buildSecurityChecks(
+  inputFindings: BackendFinding[] = [],
+  outputFindings: BackendFinding[] = []
+): GatewaySecurityCheck[] {
+  return [
+    ...buildBaseChecks(),
+
+    ...inputFindings.map(
+      (finding) =>
+        convertFindingToCheck(
+          finding,
+          "input"
         )
+    ),
+
+    ...outputFindings.map(
+      (finding) =>
+        convertFindingToCheck(
+          finding,
+          "output"
+        )
+    ),
+  ];
+}
+
+function createBlockedResult(
+  data: GatewayBlockedData
+): GatewayRequestResult {
+  const inputFindings =
+    data.security?.inputFindings ??
+    data.findings ??
+    [];
+
+  const outputFindings =
+    data.security?.outputFindings ??
+    [];
+
+  const inputTokens =
+    data.usage?.inputTokens ?? 0;
+
+  const outputTokens =
+    data.usage?.outputTokens ?? 0;
+
+  const model =
+    data.stage === "INPUT"
+      ? "Not called"
+      : data.model ??
+        "Backend configured model";
+
+  return {
+    requestId:
+      "Blocked request — see Request Logs",
+
+    status: "blocked",
+
+    response: null,
+
+    securityChecks:
+      buildSecurityChecks(
+        inputFindings,
+        outputFindings
+      ),
+
+    model,
+
+    latencyMs:
+      data.latencyMs ?? 0,
+
+    inputTokens,
+
+    outputTokens,
+
+    estimatedCost:
+      data.estimatedCostUsd ?? 0,
+
+    timestamp:
+      new Date().toISOString(),
+  };
+}
+
+export async function sendGatewayRequest(
+  input: SendGatewayRequestInput
+): Promise<GatewayRequestResult> {
+  try {
+    const response =
+      await api.post<GatewaySuccessResponse>(
+        "/gateway/chat",
+
+        {
+          prompt: input.prompt,
+        },
+
+        {
+          headers: {
+            "x-api-key":
+              input.apiKey,
+          },
+        }
       );
-  
-    const outputTokens =
-      Math.round(
-        response.length / 4
-      );
-  
+
+    const data =
+      response.data.data;
+
     return {
       requestId:
-        crypto.randomUUID(),
-  
+        data.requestId,
+
       status: "allowed",
-  
-      response,
-  
-      securityChecks,
-  
-      model: input.model,
-  
-      latencyMs,
-  
-      inputTokens,
-  
-      outputTokens,
-  
-      estimatedCost: 0.0014,
-  
+
+      response:
+        data.response,
+
+      securityChecks:
+        buildSecurityChecks(
+          data.security
+            .inputFindings,
+
+          data.security
+            .outputFindings
+        ),
+
+      model:
+        data.model,
+
+      latencyMs:
+        data.latencyMs,
+
+      inputTokens:
+        data.usage.inputTokens,
+
+      outputTokens:
+        data.usage.outputTokens,
+
+      estimatedCost:
+        data.estimatedCostUsd,
+
       timestamp:
         new Date().toISOString(),
     };
+  } catch (error) {
+    if (
+      !axios.isAxiosError<GatewayErrorResponse>(
+        error
+      )
+    ) {
+      throw new Error(
+        "Unexpected gateway error."
+      );
+    }
+
+    const statusCode =
+      error.response?.status;
+
+    const payload =
+      error.response?.data;
+
+    /*
+     * Security-policy block.
+     *
+     * Both input-security blocks and
+     * output-security blocks return 403.
+     */
+    if (
+      statusCode === 403 &&
+      payload?.data?.decision ===
+        "BLOCKED"
+    ) {
+      return createBlockedResult(
+        payload.data
+      );
+    }
+
+    /*
+     * Invalid, missing, expired or
+     * otherwise rejected API key.
+     */
+    if (statusCode === 401) {
+      throw new Error(
+        payload?.message ??
+          "Invalid Gateway API key."
+      );
+    }
+
+    /*
+     * Redis-backed gateway
+     * rate limiter.
+     */
+    if (statusCode === 429) {
+      throw new Error(
+        payload?.message ??
+          "Rate limit exceeded. Try again later."
+      );
+    }
+
+    /*
+     * Invalid prompt/body.
+     */
+    if (statusCode === 400) {
+      throw new Error(
+        payload?.message ??
+          "Invalid gateway request."
+      );
+    }
+
+    if (statusCode === 403) {
+      throw new Error(
+        payload?.message ??
+          "Gateway request forbidden."
+      );
+    }
+
+    if (
+      statusCode &&
+      statusCode >= 500
+    ) {
+      throw new Error(
+        payload?.message ??
+          "Gateway server error."
+      );
+    }
+
+    throw new Error(
+      payload?.message ??
+        "Gateway request failed."
+    );
   }
+}

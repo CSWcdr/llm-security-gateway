@@ -1,4 +1,5 @@
 import {
+    useEffect,
     useMemo,
     useState,
   } from "react";
@@ -6,6 +7,8 @@ import {
   import {
     Activity,
     Ban,
+    Loader2,
+    RefreshCw,
     Search,
     ShieldAlert,
     ShieldCheck,
@@ -18,23 +21,77 @@ import {
   import RequestStatusBadge from "../components/logs/RequestStatusBadge";
   
   import {
-    mockRequestLogs,
-  } from "../data/mockData";
+    getRequestLogs,
+  } from "../services/logs.service";
+  
+  import {
+    useProjects,
+  } from "../hooks/useProjects";
   
   import type {
+    GatewayRequestLog,
     RequestStatus,
   } from "../types";
+  
   
   type StatusFilter =
     | "All"
     | RequestStatus;
   
+  
   export default function RequestLogsPage() {
     const navigate =
       useNavigate();
   
-    const [search, setSearch] =
+    const {
+      projects,
+    } =
+      useProjects();
+  
+  
+    const [
+      selectedProjectId,
+      setSelectedProjectId,
+    ] =
       useState("");
+  
+  
+    const [
+      logs,
+      setLogs,
+    ] =
+      useState<
+        GatewayRequestLog[]
+      >([]);
+  
+  
+    const [
+      loading,
+      setLoading,
+    ] =
+      useState(false);
+  
+  
+    const [
+      error,
+      setError,
+    ] =
+      useState("");
+  
+  
+    const [
+      refreshKey,
+      setRefreshKey,
+    ] =
+      useState(0);
+  
+  
+    const [
+      search,
+      setSearch,
+    ] =
+      useState("");
+  
   
     const [
       statusFilter,
@@ -44,18 +101,113 @@ import {
         "All"
       );
   
+  
+    useEffect(() => {
+      if (
+        !selectedProjectId &&
+        projects.length > 0
+      ) {
+        setSelectedProjectId(
+          projects[0].id
+        );
+  
+        return;
+      }
+  
+      if (
+        selectedProjectId &&
+        projects.length > 0 &&
+        !projects.some(
+          (project) =>
+            project.id ===
+            selectedProjectId
+        )
+      ) {
+        setSelectedProjectId(
+          projects[0].id
+        );
+      }
+    }, [
+      projects,
+      selectedProjectId,
+    ]);
+  
+  
+    useEffect(() => {
+      if (!selectedProjectId) {
+        setLogs([]);
+        return;
+      }
+  
+      let active = true;
+  
+  
+      async function loadLogs() {
+        try {
+          setLoading(true);
+  
+          setError("");
+  
+          const result =
+            await getRequestLogs(
+              selectedProjectId
+            );
+  
+          if (!active) {
+            return;
+          }
+  
+          setLogs(result);
+        } catch (error) {
+          if (!active) {
+            return;
+          }
+  
+          setError(
+            error instanceof Error
+              ? error.message
+              : "Failed to load request logs."
+          );
+  
+          setLogs([]);
+        } finally {
+          if (active) {
+            setLoading(false);
+          }
+        }
+      }
+  
+  
+      void loadLogs();
+  
+  
+      return () => {
+        active = false;
+      };
+    }, [
+      selectedProjectId,
+      refreshKey,
+    ]);
+  
+  
     const filteredRequests =
       useMemo(() => {
         const query =
-          search.toLowerCase();
+          search
+            .trim()
+            .toLowerCase();
   
-        return mockRequestLogs.filter(
+        return logs.filter(
           (request) => {
             const matchesSearch =
+              !query ||
               request.id
                 .toLowerCase()
                 .includes(query) ||
               request.projectName
+                .toLowerCase()
+                .includes(query) ||
+              request.apiKeyName
                 .toLowerCase()
                 .includes(query) ||
               request.model
@@ -78,46 +230,123 @@ import {
           }
         );
       }, [
+        logs,
         search,
         statusFilter,
       ]);
   
+  
     const allowed =
-      mockRequestLogs.filter(
+      logs.filter(
         (request) =>
           request.status ===
           "Allowed"
       ).length;
   
+  
     const blocked =
-      mockRequestLogs.filter(
+      logs.filter(
         (request) =>
           request.status ===
           "Blocked"
       ).length;
   
+  
     const warnings =
-      mockRequestLogs.filter(
+      logs.filter(
         (request) =>
           request.status ===
           "Warning"
       ).length;
   
+  
     return (
       <div className="space-y-6">
   
         {/* Header */}
-        <div>
+        <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-end">
   
-          <h1 className="text-2xl font-semibold tracking-tight text-white">
-            Request Logs
-          </h1>
+          <div>
+            <h1 className="text-2xl font-semibold tracking-tight text-white">
+              Request Logs
+            </h1>
   
-          <p className="mt-1 text-sm text-slate-500">
-            Inspect every request processed by the LLM Security Gateway.
-          </p>
+            <p className="mt-1 text-sm text-slate-500">
+              Inspect real requests processed by the LLM Security Gateway.
+            </p>
+          </div>
   
+  
+          <div className="flex flex-col gap-2 sm:flex-row">
+  
+            {/* Project Selector */}
+            <select
+              value={
+                selectedProjectId
+              }
+              onChange={(event) =>
+                setSelectedProjectId(
+                  event.target.value
+                )
+              }
+              className="min-w-55 rounded-xl border border-slate-800 bg-slate-950 px-3 py-2.5 text-sm text-white outline-none focus:border-blue-500/50"
+            >
+              {projects.length ===
+              0 ? (
+                <option value="">
+                  No projects
+                </option>
+              ) : (
+                projects.map(
+                  (project) => (
+                    <option
+                      key={
+                        project.id
+                      }
+                      value={
+                        project.id
+                      }
+                    >
+                      {
+                        project.name
+                      }
+                    </option>
+                  )
+                )
+              )}
+            </select>
+  
+  
+            {/* Refresh */}
+            <button
+              type="button"
+              disabled={
+                loading ||
+                !selectedProjectId
+              }
+              onClick={() =>
+                setRefreshKey(
+                  (value) =>
+                    value + 1
+                )
+              }
+              className="flex items-center justify-center gap-2 rounded-xl border border-slate-800 bg-slate-900 px-4 py-2.5 text-sm text-slate-400 transition hover:border-slate-700 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              <RefreshCw
+                size={15}
+                className={
+                  loading
+                    ? "animate-spin"
+                    : ""
+                }
+              />
+  
+              Refresh
+            </button>
+  
+          </div>
         </div>
+  
   
         {/* Metrics */}
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -125,11 +354,12 @@ import {
           <LogMetric
             label="Total Requests"
             value={
-              mockRequestLogs.length.toString()
+              logs.length.toString()
             }
             icon={Activity}
             iconStyle="bg-blue-500/10 text-blue-400"
           />
+  
   
           <LogMetric
             label="Allowed"
@@ -140,6 +370,7 @@ import {
             iconStyle="bg-emerald-500/10 text-emerald-400"
           />
   
+  
           <LogMetric
             label="Blocked"
             value={
@@ -149,8 +380,9 @@ import {
             iconStyle="bg-red-500/10 text-red-400"
           />
   
+  
           <LogMetric
-            label="Warnings"
+            label="Errors"
             value={
               warnings.toString()
             }
@@ -160,7 +392,8 @@ import {
   
         </div>
   
-        {/* Search */}
+  
+        {/* Search + Filters */}
         <div className="flex flex-col gap-3 rounded-2xl border border-slate-800 bg-slate-900/30 p-4 sm:flex-row">
   
           <div className="relative flex-1">
@@ -172,18 +405,21 @@ import {
   
             <input
               value={search}
-              onChange={(event) =>
+              onChange={(
+                event
+              ) =>
                 setSearch(
                   event.target.value
                 )
               }
-              placeholder="Search request ID, project, model or prompt..."
+              placeholder="Search request ID, API key, model or prompt..."
               className="w-full rounded-xl border border-slate-800 bg-slate-950 py-2.5 pl-9 pr-4 text-sm text-white outline-none placeholder:text-slate-600 focus:border-blue-500/50"
             />
   
           </div>
   
-          <div className="flex gap-2">
+  
+          <div className="flex flex-wrap gap-2">
   
             {(
               [
@@ -192,32 +428,45 @@ import {
                 "Blocked",
                 "Warning",
               ] as StatusFilter[]
-            ).map((status) => (
-  
-              <button
-                key={status}
-                onClick={() =>
-                  setStatusFilter(
+            ).map(
+              (status) => (
+                <button
+                  key={status}
+                  type="button"
+                  onClick={() =>
+                    setStatusFilter(
+                      status
+                    )
+                  }
+                  className={`rounded-lg px-3 py-2 text-xs font-medium transition ${
+                    statusFilter ===
                     status
-                  )
-                }
-                className={`rounded-lg px-3 py-2 text-xs font-medium transition ${
-                  statusFilter ===
-                  status
-                    ? "bg-blue-500/10 text-blue-400"
-                    : "text-slate-500 hover:bg-slate-800 hover:text-slate-300"
-                }`}
-              >
-                {status}
-              </button>
-  
-            ))}
+                      ? "bg-blue-500/10 text-blue-400"
+                      : "text-slate-500 hover:bg-slate-800 hover:text-slate-300"
+                  }`}
+                >
+                  {status ===
+                  "Warning"
+                    ? "Errors"
+                    : status}
+                </button>
+              )
+            )}
   
           </div>
   
         </div>
   
-        {/* Table */}
+  
+        {/* Error */}
+        {error && (
+          <div className="rounded-xl border border-red-500/15 bg-red-500/5 px-4 py-3 text-sm text-red-400">
+            {error}
+          </div>
+        )}
+  
+  
+        {/* Logs Table */}
         <div className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-900/40">
   
           <div className="border-b border-slate-800 p-5">
@@ -227,163 +476,216 @@ import {
             </h2>
   
             <p className="mt-1 text-xs text-slate-500">
-              Click a request to inspect its complete processing lifecycle.
+              Click any request to inspect its complete security and execution details.
             </p>
   
           </div>
   
-          <div className="overflow-x-auto">
   
-            <table className="w-full text-left">
+          {loading ? (
+            <div className="flex items-center justify-center py-24">
   
-              <thead>
+              <Loader2
+                size={24}
+                className="animate-spin text-blue-400"
+              />
   
-                <tr className="border-b border-slate-800 text-[10px] uppercase tracking-wider text-slate-600">
+              <span className="ml-3 text-sm text-slate-500">
+                Loading request logs...
+              </span>
   
-                  <th className="px-5 py-3 font-medium">
-                    Request ID
-                  </th>
-  
-                  <th className="px-5 py-3 font-medium">
-                    Project
-                  </th>
-  
-                  <th className="px-5 py-3 font-medium">
-                    Model
-                  </th>
-  
-                  <th className="px-5 py-3 font-medium">
-                    Status
-                  </th>
-  
-                  <th className="px-5 py-3 font-medium">
-                    Latency
-                  </th>
-  
-                  <th className="px-5 py-3 font-medium">
-                    Tokens
-                  </th>
-  
-                  <th className="px-5 py-3 font-medium">
-                    Cost
-                  </th>
-  
-                  <th className="px-5 py-3 font-medium">
-                    Time
-                  </th>
-  
-                </tr>
-  
-              </thead>
-  
-              <tbody>
-  
-                {filteredRequests.map(
-                  (request) => (
-                    <tr
-                      key={
-                        request.id
-                      }
-                      onClick={() =>
-                        navigate(
-                          `/logs/${request.id}`
-                        )
-                      }
-                      className="cursor-pointer border-b border-slate-800/70 text-sm transition last:border-none hover:bg-slate-800/30"
-                    >
-  
-                      <td className="px-5 py-4 font-mono text-xs text-blue-400">
-                        {request.id}
-                      </td>
-  
-                      <td className="px-5 py-4">
-  
-                        <p className="text-slate-200">
-                          {
-                            request.projectName
-                          }
-                        </p>
-  
-                        <p className="mt-1 text-[11px] text-slate-600">
-                          {
-                            request.apiKeyName
-                          }
-                        </p>
-  
-                      </td>
-  
-                      <td className="px-5 py-4 text-slate-400">
-                        {
-                          request.model
-                        }
-                      </td>
-  
-                      <td className="px-5 py-4">
-  
-                        <RequestStatusBadge
-                          status={
-                            request.status
-                          }
-                        />
-  
-                      </td>
-  
-                      <td className="px-5 py-4 text-slate-400">
-                        {
-                          request.latencyMs
-                        }{" "}
-                        ms
-                      </td>
-  
-                      <td className="px-5 py-4 text-slate-400">
-                        {request.inputTokens +
-                          request.outputTokens}
-                      </td>
-  
-                      <td className="px-5 py-4 text-slate-400">
-                        $
-                        {request.estimatedCost.toFixed(
-                          4
-                        )}
-                      </td>
-  
-                      <td className="px-5 py-4 text-xs text-slate-500">
-  
-                        {new Date(
-                          request.createdAt
-                        ).toLocaleTimeString(
-                          [],
-                          {
-                            hour:
-                              "2-digit",
-                            minute:
-                              "2-digit",
-                          }
-                        )}
-  
-                      </td>
-  
-                    </tr>
-                  )
-                )}
-  
-              </tbody>
-  
-            </table>
-  
-          </div>
-  
-          {filteredRequests.length ===
-            0 && (
+            </div>
+          ) : !selectedProjectId ? (
             <div className="py-20 text-center">
   
               <p className="text-sm text-slate-400">
+                No project selected.
+              </p>
+  
+              <p className="mt-2 text-xs text-slate-600">
+                Create a project first.
+              </p>
+  
+            </div>
+          ) : filteredRequests.length ===
+            0 ? (
+            <div className="py-20 text-center">
+  
+              <Activity
+                size={24}
+                className="mx-auto text-slate-700"
+              />
+  
+              <p className="mt-4 text-sm text-slate-400">
                 No requests found.
               </p>
   
               <p className="mt-2 text-xs text-slate-600">
-                Try changing your search or filters.
+                Send a request from the AI Playground and refresh this page.
               </p>
+  
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+  
+              <table className="w-full text-left">
+  
+                <thead>
+                  <tr className="border-b border-slate-800 text-[10px] uppercase tracking-wider text-slate-600">
+  
+                    <th className="px-5 py-3 font-medium">
+                      Request
+                    </th>
+  
+                    <th className="px-5 py-3 font-medium">
+                      API Key
+                    </th>
+  
+                    <th className="px-5 py-3 font-medium">
+                      Model
+                    </th>
+  
+                    <th className="px-5 py-3 font-medium">
+                      Status
+                    </th>
+  
+                    <th className="px-5 py-3 font-medium">
+                      Latency
+                    </th>
+  
+                    <th className="px-5 py-3 font-medium">
+                      Tokens
+                    </th>
+  
+                    <th className="px-5 py-3 font-medium">
+                      Cost
+                    </th>
+  
+                    <th className="px-5 py-3 font-medium">
+                      Time
+                    </th>
+  
+                  </tr>
+                </thead>
+  
+  
+                <tbody>
+  
+                  {filteredRequests.map(
+                    (request) => (
+                      <tr
+                        key={
+                          request.id
+                        }
+                        onClick={() =>
+                          navigate(
+                            `/logs/${request.id}`
+                          )
+                        }
+                        className="cursor-pointer border-b border-slate-800/70 text-sm transition last:border-none hover:bg-slate-800/30"
+                      >
+  
+                        <td className="px-5 py-4">
+  
+                          <p className="max-w-50 truncate font-mono text-xs text-blue-400">
+                            {
+                              request.id
+                            }
+                          </p>
+  
+                          <p className="mt-1 max-w-60 truncate text-[11px] text-slate-600">
+                            {
+                              request.promptPreview
+                            }
+                          </p>
+  
+                        </td>
+  
+  
+                        <td className="px-5 py-4">
+  
+                          <p className="text-sm text-slate-300">
+                            {
+                              request.apiKeyName
+                            }
+                          </p>
+  
+                          <p className="mt-1 text-[11px] text-slate-600">
+                            {
+                              request.projectName
+                            }
+                          </p>
+  
+                        </td>
+  
+  
+                        <td className="px-5 py-4 text-xs text-slate-400">
+                          {
+                            request.model
+                          }
+                        </td>
+  
+  
+                        <td className="px-5 py-4">
+  
+                          <RequestStatusBadge
+                            status={
+                              request.status
+                            }
+                          />
+  
+                        </td>
+  
+  
+                        <td className="px-5 py-4 text-slate-400">
+                          {
+                            request.latencyMs
+                          }{" "}
+                          ms
+                        </td>
+  
+  
+                        <td className="px-5 py-4 text-slate-400">
+                          {request.inputTokens +
+                            request.outputTokens}
+                        </td>
+  
+  
+                        <td className="px-5 py-4 text-slate-400">
+                          $
+                          {request.estimatedCost.toFixed(
+                            6
+                          )}
+                        </td>
+  
+  
+                        <td className="whitespace-nowrap px-5 py-4 text-xs text-slate-500">
+  
+                          {new Date(
+                            request.createdAt
+                          ).toLocaleString(
+                            [],
+                            {
+                              month:
+                                "short",
+                              day:
+                                "2-digit",
+                              hour:
+                                "2-digit",
+                              minute:
+                                "2-digit",
+                            }
+                          )}
+  
+                        </td>
+  
+                      </tr>
+                    )
+                  )}
+  
+                </tbody>
+  
+              </table>
   
             </div>
           )}
@@ -394,8 +696,10 @@ import {
     );
   }
   
+  
   type IconComponent =
     typeof Activity;
+  
   
   function LogMetric({
     label,
@@ -425,10 +729,13 @@ import {
   
           </div>
   
+  
           <div
             className={`flex h-9 w-9 items-center justify-center rounded-xl ${iconStyle}`}
           >
-            <Icon size={17} />
+            <Icon
+              size={17}
+            />
           </div>
   
         </div>

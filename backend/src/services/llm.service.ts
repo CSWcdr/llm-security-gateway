@@ -10,6 +10,7 @@ import {
     calculateLLMCost,
   } from "../utils/costCalculator";
   
+  
   export async function generateLLMResponse(
     prompt: string
   ) {
@@ -26,42 +27,104 @@ import {
             role: "system",
   
             content:
-              "You are a helpful AI assistant. Follow the user's request clearly and concisely.",
+              "You are a helpful AI assistant. Answer the user's request clearly, accurately, and concisely. Always provide a final user-facing answer.",
           },
   
           {
             role: "user",
-            content: prompt,
+  
+            content:
+              prompt,
           },
         ],
   
-        temperature: 0.2,
+        /*
+         * GPT-OSS is a reasoning model.
+         *
+         * We do not need its internal
+         * reasoning trace inside our
+         * Security Gateway response.
+         *
+         * This helps ensure the available
+         * output budget is used for the
+         * actual final answer.
+         */
+        include_reasoning:
+          false,
   
+        /*
+         * LOW is enough for normal
+         * Playground questions and keeps
+         * latency/token usage lower.
+         */
+        reasoning_effort:
+          "low",
+  
+        temperature:
+          0.2,
+  
+        /*
+         * 500 was too restrictive for a
+         * reasoning model and could result
+         * in an empty final answer.
+         */
         max_completion_tokens:
-          500,
+          1500,
+  
+        stream:
+          false,
       });
+  
   
     const latencyMs =
       Date.now() -
       startedAt;
   
-    const content =
+  
+    const rawContent =
       completion
         .choices[0]
         ?.message
-        ?.content ?? "";
+        ?.content;
+  
+  
+    const content =
+      typeof rawContent ===
+        "string"
+        ? rawContent.trim()
+        : "";
+  
+  
+    /*
+     * Never silently return an empty
+     * successful LLM response.
+     *
+     * If Groq returns no final text,
+     * treat it as an actual provider
+     * failure instead of letting the UI
+     * display a successful blank request.
+     */
+    if (!content) {
+      throw new Error(
+        "LLM provider returned an empty response."
+      );
+    }
+  
   
     const inputTokens =
       completion.usage
         ?.prompt_tokens ?? 0;
   
+  
     const outputTokens =
       completion.usage
         ?.completion_tokens ?? 0;
   
+  
     const totalTokens =
       completion.usage
         ?.total_tokens ?? 0;
+  
   
     const estimatedCostUsd =
       calculateLLMCost(
@@ -69,6 +132,7 @@ import {
         inputTokens,
         outputTokens
       );
+  
   
     return {
       content,
